@@ -24,6 +24,7 @@
 #include "mpp_device.h"
 
 #include "h264e_syntax.h"
+#include "mpp_enc_refs.h"
 
 extern RK_U32 hal_h264e_debug;
 
@@ -436,6 +437,10 @@ typedef struct H264eHalContext_t {
     MppData                         *qp_p;
     MppData                         *sse_p;
     H264eMbRcCtx                    mb_rc;
+
+    // if true use user hierarchy info
+    RK_S32                          usr_hier;
+    MppEncHierCfg                   hier_cfg;
 } H264eHalContext;
 
 MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps);
