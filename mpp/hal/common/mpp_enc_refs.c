@@ -95,7 +95,7 @@ MPP_RET mpp_enc_get_hier_info(MppEncFrmRefInfo **info, MppEncHierCfg *cfg)
             tmp->status.is_lt_ref = 1;
             if (isdigit(fmt[1])) {
                 tmp->status.lt_idx = (RK_U32)fmt[1] - 0x30;
-                mpp_log("lt_idx %d\n", tmp->status.lt_idx);
+                // mpp_log("lt_idx %d\n", tmp->status.lt_idx);
                 fmt++;
             }
         } break;
@@ -129,10 +129,12 @@ MPP_RET mpp_enc_get_hier_info(MppEncFrmRefInfo **info, MppEncHierCfg *cfg)
 
         tmp->ref_gop_idx = cfg->ref_idx[i];
 
+#if 0
         mpp_log_f("gop %d intra %d idr %d ref %d lt %d %d ref_idx %d\n",
                   i, tmp->status.is_intra, tmp->status.is_idr,
                   !tmp->status.is_non_ref, tmp->status.is_lt_ref,
                   tmp->status.lt_idx, tmp->ref_gop_idx);
+#endif
     }
 
     *info = p;

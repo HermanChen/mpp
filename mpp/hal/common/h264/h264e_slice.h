@@ -110,6 +110,8 @@ typedef struct H264eSlice_t {
     RK_S32      sw_length;
 } H264eSlice;
 
+typedef struct H264eHalContext_t H264eHalContext;
+
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -122,6 +124,8 @@ MPP_RET h264e_slice_update(H264eSlice *slice, void *p);
 
 H264eMmco *h264e_slice_gen_mmco(RK_S32 id, RK_S32 arg0, RK_S32 arg1);
 MPP_RET h264e_slice_add_mmco(H264eSlice *slice, H264eMmco *mmco);
+
+void h264e_init_vepu_slice(H264eHalContext *ctx);
 
 #ifdef __cplusplus
 }
