@@ -42,6 +42,7 @@ typedef struct {
     MppFrameFormat  format;
     RK_U32          debug;
     RK_U32          num_frames;
+    RK_S32          gop_mode;
 
     RK_U32          have_input;
     RK_U32          have_output;
@@ -87,6 +88,12 @@ typedef struct {
     RK_S32 gop;
     RK_S32 fps;
     RK_S32 bps;
+
+    // gop reference config
+    // 0 - default gop: I P P P
+    // 1 - typical tsvc4 gop
+    // 2 - base / enhance / enable_pred gop
+    RK_S32 gop_mode;
 } MpiEncTestData;
 
 static OptionInfo mpi_enc_cmd[] = {
@@ -97,6 +104,7 @@ static OptionInfo mpi_enc_cmd[] = {
     {"f",               "format",               "the format of input picture"},
     {"t",               "type",                 "output stream coding type"},
     {"n",               "max frame number",     "max encoding frame number"},
+    {"g",               "gop_mode",             "gop reference mode"},
     {"d",               "debug",                "debug flag"},
 };
 
@@ -127,6 +135,7 @@ MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
     if (cmd->type == MPP_VIDEO_CodingMJPEG)
         cmd->num_frames = 1;
     p->num_frames   = cmd->num_frames;
+    p->gop_mode     = cmd->gop_mode;
 
     if (cmd->have_input) {
         p->fp_input = fopen(cmd->file_input, "rb");
@@ -318,6 +327,99 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
     if (ret) {
         mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
         goto RET;
+    }
+
+    p->sei_mode = MPP_ENC_SEI_MODE_ONE_FRAME;
+    ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
+    if (ret) {
+        mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
+        goto RET;
+    }
+
+    if (p->gop_mode) {
+        MppEncGopRef ref;
+
+        ref.change = 1;
+        ref.gop_cfg_enable = 1;
+
+        if (p->gop_mode == 1) {
+            MppGopRefInfo *gop = &ref.gop_info[0];
+            ref.gop_cfg_mode    = 0;
+            ref.ref_gop_len     = 8;
+
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 1;
+            gop[0].lt_idx       = 0;
+
+            gop[1].temporal_id  = 3;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
+
+            gop[2].temporal_id  = 2;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
+
+            gop[3].temporal_id  = 3;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
+
+            gop[3].temporal_id  = 3;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
+
+            gop[4].temporal_id  = 1;
+            gop[4].ref_idx      = 0;
+            gop[4].is_non_ref   = 0;
+            gop[4].is_lt_ref    = 1;
+            gop[4].lt_idx       = 1;
+
+            gop[5].temporal_id  = 3;
+            gop[5].ref_idx      = 4;
+            gop[5].is_non_ref   = 1;
+            gop[5].is_lt_ref    = 0;
+            gop[5].lt_idx       = 0;
+
+            gop[6].temporal_id  = 2;
+            gop[6].ref_idx      = 4;
+            gop[6].is_non_ref   = 0;
+            gop[6].is_lt_ref    = 0;
+            gop[6].lt_idx       = 0;
+
+            gop[7].temporal_id  = 3;
+            gop[7].ref_idx      = 6;
+            gop[7].is_non_ref   = 1;
+            gop[7].is_lt_ref    = 0;
+            gop[7].lt_idx       = 0;
+
+            gop[8].temporal_id  = 0;
+            gop[8].ref_idx      = 0;
+            gop[8].is_non_ref   = 0;
+            gop[8].is_lt_ref    = 1;
+            gop[8].lt_idx       = 0;
+        } else if (p->gop_mode == 2) {
+            ref.hi_gop_mode     = 0;
+            ref.hi_base         = 1;
+            ref.hi_enhance      = 1;
+            ref.hi_enable_pred  = 1;
+        }
+
+        mpp_log_f("MPP_ENC_SET_GOPREF start\n");
+        ret = mpi->control(ctx, MPP_ENC_SET_GOPREF, &ref);
+        mpp_log_f("MPP_ENC_SET_GOPREF done ret %d\n", ret);
+        if (ret) {
+            mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
+            goto RET;
+        }
     }
 
 RET:
@@ -629,6 +731,14 @@ static RK_S32 mpi_enc_test_parse_options(int argc, char **argv, MpiEncTestCmd* c
                     cmd->num_frames = atoi(next);
                 } else {
                     mpp_err("invalid input max number of frames\n");
+                    goto PARSE_OPINIONS_OUT;
+                }
+                break;
+            case 'g':
+                if (next) {
+                    cmd->gop_mode = atoi(next);
+                } else {
+                    mpp_err("invalid gop mode\n");
                     goto PARSE_OPINIONS_OUT;
                 }
                 break;
