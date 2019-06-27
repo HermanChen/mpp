@@ -763,6 +763,47 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
     case MPP_ENC_SET_GOPREF: {
         MppEncGopRef *ref = (MppEncGopRef *)param;
         ctx->cfg->misc.gop_ref = *ref;
+
+        RK_S32 i;
+        RK_S32 pos = 0;
+        MppEncHierCfg *hier = &ctx->hier_cfg;
+        char *fmt = hier->ref_fmt;
+        size_t size = sizeof(hier->ref_fmt);
+
+        if (ref->gop_cfg_mode == GopRefModeRockchip) {
+            // Rockchip config mode
+            if (ref->ref_gop_len > MAX_GOP_REF_LEN) {
+                mpp_err("ref gop length %d is too large\n", ref->ref_gop_len);
+                ret = MPP_NOK;
+                break;
+            }
+
+            hier->length = ref->ref_gop_len;
+            h264e_dpb_dbg("ref_gop_len %d \n", ref->ref_gop_len);
+
+            for (i = 0; i < hier->length + 1; i++) {
+                RK_S32 is_non_ref = ref->gop_info[i].is_non_ref;
+                RK_S32 is_lt_ref = ref->gop_info[i].is_lt_ref;
+
+                hier->ref_idx[i] = ref->gop_info[i].ref_idx;
+
+                pos += snprintf(fmt + pos, size - pos, "%s%d", (i) ? "P" : "I", i);
+                pos += snprintf(fmt + pos, size - pos, "%s",
+                                (is_non_ref) ? "N" : (is_lt_ref) ? "L" : "S");
+
+                if (is_lt_ref)
+                    pos += snprintf(fmt + pos, size - pos, "%d", ref->gop_info[i].lt_idx);
+
+                pos += snprintf(fmt + pos, size - pos, "T%d", ref->gop_info[i].temporal_id);
+
+                h264e_dpb_dbg("pos %d fmt %s \n", pos, fmt);
+            }
+        } else {
+            // Hisilicon config mode
+
+        }
+
+        ctx->usr_hier = 1;
     } break;
     default : {
         mpp_err("unrecognizable cmd type %d", cmd_type);
