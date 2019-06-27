@@ -1941,6 +1941,8 @@ MPP_RET hal_h264e_rkv_control(void *hal, RK_S32 cmd_type, void *param)
         ctx->qp_scale = *((RK_U32 *)param);
         ctx->qp_scale = mpp_clip(ctx->qp_scale, scale_min, scale_max);
     } break;
+    case MPP_ENC_SET_GOPREF: {
+    } break;
     default : {
         h264e_hal_err("unrecognizable cmd type %x", cmd_type);
     } break;

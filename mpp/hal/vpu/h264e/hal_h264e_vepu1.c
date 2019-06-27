@@ -628,7 +628,7 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
     H264eHalContext *ctx = (H264eHalContext *)hal;
     h264e_hal_enter();
 
-    h264e_hal_dbg(H264E_DBG_DETAIL, "hal_h264e_vpu_control cmd 0x%x, info %p", cmd_type, param);
+    h264e_hal_dbg(H264E_DBG_DETAIL, "hal_h264e_vpu_control cmd 0x%08x, info %p", cmd_type, param);
     switch (cmd_type) {
     case MPP_ENC_SET_EXTRA_INFO: {
     } break;
@@ -760,6 +760,10 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
     case MPP_ENC_PRE_ALLOC_BUFF:
         // vepu do not support prealloc buff, ignore cmd
         break;
+    case MPP_ENC_SET_GOPREF: {
+        MppEncGopRef *ref = (MppEncGopRef *)param;
+        ctx->cfg->misc.gop_ref = *ref;
+    } break;
     default : {
         mpp_err("unrecognizable cmd type %d", cmd_type);
         ret = MPP_NOK;

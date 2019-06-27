@@ -646,6 +646,12 @@ MPP_RET mpp_enc_control(MppEnc *enc, MpiCmd cmd, void *param)
         enc_dbg_ctrl("set ctu qp\n");
         ret = mpp_hal_control(enc->hal, cmd, param);
     } break;
+    case MPP_ENC_SET_GOPREF: {
+        enc_dbg_ctrl("idr request\n");
+        ret = controller_config(enc->controller, SET_IDR_FRAME, NULL);
+        enc_dbg_ctrl("set gop ref\n");
+        ret = mpp_hal_control(enc->hal, cmd, param);
+    } break;
     default : {
         mpp_log_f("unsupported cmd id %08x param %p\n", cmd, param);
         ret = MPP_NOK;
