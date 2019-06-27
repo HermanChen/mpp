@@ -347,7 +347,9 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
 
     if (codec->change) {
         // TODO: setup sps / pps here
-        hw_cfg->idr_pic_id = !ctx->idr_pic_id;
+        hw_cfg->idr_pic_id = ctx->idr_pic_id;
+        ctx->idr_pic_id = !ctx->idr_pic_id;
+
         hw_cfg->filter_disable = codec->deblock_disable;
         hw_cfg->slice_alpha_offset = codec->deblock_offset_alpha;
         hw_cfg->slice_beta_offset = codec->deblock_offset_beta;

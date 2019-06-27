@@ -798,6 +798,8 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
         }
 
         mpp_assert(insert >= 0);
+        if (insert < 0)
+            h264e_dpb_dump_frms(dpb);
 
         h264e_dpb_dbg_f("frm %d lt %d swap from %d to pos %d\n",
                         frm->frm_cnt, frm->info.is_lt_ref,

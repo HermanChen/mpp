@@ -50,6 +50,10 @@ MPP_RET hal_h264e_vepu2_init(void *hal, MppHalCfg *cfg)
     ctx->param_buf  = mpp_calloc_size(void,  H264E_EXTRA_INFO_BUF_SIZE);
     mpp_packet_init(&ctx->packeted_param, ctx->param_buf, H264E_EXTRA_INFO_BUF_SIZE);
 
+    ctx->buf_size = SZ_128K;
+    ctx->src_buf = mpp_calloc(RK_U8, ctx->buf_size);
+    ctx->dst_buf = mpp_calloc(RK_U8, ctx->buf_size);
+
     h264e_vpu_init_extra_info(ctx->extra_info);
 
     MppDevCfg dev_cfg = {
@@ -83,6 +87,11 @@ MPP_RET hal_h264e_vepu2_deinit(void *hal)
     H264eHalContext *ctx = (H264eHalContext *)hal;
     h264e_hal_enter();
 
+    if (ctx->dpb) {
+        h264e_dpb_deinit(ctx->dpb);
+        ctx->dpb = NULL;
+    }
+
     MPP_FREE(ctx->regs);
     MPP_FREE(ctx->param_buf);
 
@@ -100,6 +109,10 @@ MPP_RET hal_h264e_vepu2_deinit(void *hal)
         h264e_vpu_free_buffers(ctx);
         MPP_FREE(ctx->buffers);
     }
+
+    MPP_FREE(ctx->param_buf);
+    MPP_FREE(ctx->src_buf);
+    MPP_FREE(ctx->dst_buf);
 
     if (ctx->intra_qs) {
         mpp_linreg_deinit(ctx->intra_qs);
@@ -148,6 +161,9 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
     RK_U32 mb_w;
     RK_U32 mb_h;
 
+    MppBuffer recn = NULL;
+    MppBuffer refr = NULL;
+
     h264e_hal_enter();
 
     // generate parameter from config
@@ -160,6 +176,46 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
 
     mb_w = (prep->width  + 15) / 16;
     mb_h = (prep->height + 15) / 16;
+
+    if (ctx->usr_hier) {
+        h264e_init_vepu_slice(ctx);
+
+        if (NULL == ctx->dpb) {
+            RK_U32 size = mb_w * mb_h * 256 * 2;
+            H264eSps *sps = &extra_info->sps;
+            H264eDpbCfg cfg;
+
+            cfg.poc_type = sps->i_poc_type;
+            cfg.ref_frm_num = ctx->slice.max_num_ref_frames;
+            cfg.log2_max_frm_num = sps->i_log2_max_frame_num;
+            cfg.log2_max_poc_lsb = sps->i_log2_max_poc_lsb;
+
+            h264e_dpb_init(&ctx->dpb, &cfg);
+            h264e_dpb_setup_buf_size(ctx->dpb, &size, 1);
+            h264e_dpb_setup_hier(ctx->dpb, &ctx->hier_cfg);
+        }
+
+        H264eDpbFrm *frm = h264e_dpb_get_curr(ctx->dpb,
+                                              (hw_cfg->frame_type == H264E_VPU_FRAME_I));
+        H264eDpbFrm *ref = h264e_dpb_get_refr(frm);
+
+        h264e_dpb_build_list(ctx->dpb);
+
+        recn = h264e_dpb_frm_get_buf(frm, 0);
+        mpp_assert(recn);
+
+        refr = h264e_dpb_frm_get_buf(ref, 0);
+        if (NULL == refr)
+            refr = recn;
+
+        enc_task->temporal_id = frm->info.temporal_id;
+
+        h264e_dpb_build_marking(ctx->dpb);
+    } else {
+        RK_U32 buf2_idx = ctx->frame_cnt & 1;
+        recn = bufs->hw_rec_buf[buf2_idx];
+        refr = bufs->hw_rec_buf[1 - buf2_idx];
+    }
 
     memset(reg, 0, sizeof(H264eVpu2RegSet));
 
@@ -412,11 +468,10 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
     H264E_HAL_SET_REG(reg, VEPU_REG_ADDR_OUTPUT_CTRL, mpp_buffer_get_fd(bufs->hw_nal_size_table_buf));
 
     {
-        RK_U32 buf2_idx = ctx->frame_cnt & 1;
         RK_S32 recon_chroma_addr = 0, ref_chroma_addr = 0;
         RK_U32 frame_luma_size = mb_h * mb_w * 256;
-        RK_S32 recon_luma_addr = mpp_buffer_get_fd(bufs->hw_rec_buf[buf2_idx]);
-        RK_S32 ref_luma_addr = mpp_buffer_get_fd(bufs->hw_rec_buf[1 - buf2_idx]);
+        RK_S32 recon_luma_addr = mpp_buffer_get_fd(recn);
+        RK_S32 ref_luma_addr = mpp_buffer_get_fd(refr);
 
         recon_chroma_addr = recon_luma_addr | (frame_luma_size << 10);
         ref_chroma_addr   = ref_luma_addr   | (frame_luma_size << 10);
@@ -583,6 +638,107 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
                 break;
             }
         } while (1);
+    }
+
+    if (ctx->usr_hier) {
+        MppBuffer buf = task->enc.output;
+        RK_U8 *p = mpp_buffer_get_ptr(buf);
+        RK_S32 len = task->enc.length;
+        RK_S32 size = mpp_buffer_get_size(buf);
+        RK_S32 hw_len_bit = 0;
+        RK_S32 sw_len_bit = 0;
+        RK_S32 hw_len_byte = 0;
+        RK_S32 sw_len_byte = 0;
+        RK_S32 diff_size = 0;
+        RK_S32 tail_0bit = 0;
+        RK_U8  tail_byte = 0;
+        RK_U8  tail_tmp = 0;
+
+        {
+            RK_S32 more_buf = 0;
+
+            while (len > ctx->buf_size - 16) {
+                ctx->buf_size *= 2;
+                more_buf = 1;
+            }
+
+            if (more_buf) {
+                MPP_FREE(ctx->src_buf);
+                MPP_FREE(ctx->dst_buf);
+                ctx->src_buf = mpp_malloc(RK_U8, ctx->buf_size);
+                ctx->dst_buf = mpp_malloc(RK_U8, ctx->buf_size);
+            }
+        }
+
+        memset(ctx->dst_buf, 0, ctx->buf_size);
+
+        // copy hw stream to stream buffer first
+        memcpy(ctx->src_buf, p, len);
+
+        hw_len_bit = h264e_slice_read(&ctx->slice, ctx->src_buf, size);
+
+        // update slice information
+        h264e_slice_update(&ctx->slice, ctx->dpb);
+
+        ctx->slice.frame_num = ctx->dpb->curr->frame_num;
+        ctx->slice.pic_order_cnt_lsb = ctx->dpb->curr->poc;
+
+        // write new header to header buffer
+        sw_len_bit = h264e_slice_write(&ctx->slice, ctx->dst_buf, ctx->buf_size);
+
+        hw_len_byte = (hw_len_bit + 7) / 8;
+        sw_len_byte = (sw_len_bit + 7) / 8;
+
+        tail_byte = ctx->src_buf[len - 1];
+        tail_tmp = tail_byte;
+
+        while (!(tail_tmp & 1) && tail_0bit < 8) {
+            h264e_dpb_slice("tail_byte %02x bit %d\n", tail_tmp, tail_0bit);
+            tail_tmp >>= 1;
+            tail_0bit++;
+        }
+        h264e_dpb_slice("tail_byte %02x bit %d\n", tail_tmp, tail_0bit);
+
+        mpp_assert(tail_0bit < 8);
+
+        // move the reset slice data from src buffer to dst buffer
+        diff_size = h264e_slice_move(ctx->dst_buf, ctx->src_buf,
+                                     sw_len_bit, hw_len_bit, len);
+
+        h264e_dpb_slice("tail 0x%02x %d hw_len_bit %d sw_len_bit %d len %d hw_len_byte %d sw_len_byte %d diff %d\n",
+                        tail_byte, tail_0bit, hw_len_bit, sw_len_bit, len, hw_len_byte, sw_len_byte, diff_size);
+
+        if (ctx->slice.entropy_coding_mode) {
+            memcpy(ctx->dst_buf + sw_len_byte, ctx->src_buf + hw_len_byte,
+                   len - hw_len_byte);
+
+            memcpy(p, ctx->dst_buf, len - hw_len_byte + sw_len_byte);
+
+            // clear the tail data
+            if (sw_len_byte < hw_len_byte)
+                memset(p + len - hw_len_byte + sw_len_byte, 0, hw_len_byte - sw_len_byte);
+
+            len = len - hw_len_byte + sw_len_byte;
+        } else {
+            RK_S32 hdr_diff_bit = sw_len_bit - hw_len_bit;
+            RK_S32 bit_len = len * 8 - tail_0bit + hdr_diff_bit;
+            RK_S32 new_len = (bit_len + diff_size * 8 + 7) / 8;
+
+            ctx->dst_buf[new_len] = 0;
+
+            h264e_dpb_slice("frm %d len %d bit hw %d sw %d byte hw %d sw %d diff %d -> %d\n",
+                            ctx->dpb->curr->frm_cnt, len, hw_len_bit, sw_len_bit,
+                            hw_len_byte, sw_len_byte, diff_size, new_len);
+
+            memcpy(p, ctx->dst_buf, new_len);
+            p[new_len] = 0;
+            len = new_len;
+        }
+
+        h264e_dpb_curr_ready(ctx->dpb);
+
+        fb->out_strm_size = len;
+        task->enc.length = fb->out_strm_size;
     }
 
     if (int_cb.callBack) {

@@ -26,6 +26,38 @@
 #include "h264e_dpb.h"
 #include "h264e_slice.h"
 #include "h264e_stream.h"
+#include "hal_h264e_com.h"
+#include "hal_h264e_vepu.h"
+
+void h264e_init_vepu_slice(H264eHalContext *ctx)
+{
+    H264eHwCfg *hw_cfg = &ctx->hw_cfg;
+    H264eVpuExtraInfo *extra_info = (H264eVpuExtraInfo *)ctx->extra_info;
+    H264ePps *pps = &extra_info->pps;
+    H264eSps *sps = &extra_info->sps;
+    H264eSlice *slice = &ctx->slice;
+
+    memset(slice, 0, sizeof(*slice));
+
+    slice->max_num_ref_frames = sps->i_num_ref_frames;
+    slice->entropy_coding_mode = pps->b_cabac;
+    slice->log2_max_poc_lsb = sps->i_log2_max_poc_lsb;
+
+    slice->forbidden_bit = 0;
+    slice->nal_reference_idc = 1;
+    slice->nalu_type = 1;
+
+    slice->start_mb_nr = 0;
+    slice->slice_type = 0;
+    slice->pic_parameter_set_id = 0;
+    slice->frame_num = hw_cfg->frame_num;
+    slice->num_ref_idx_override = 0;
+    slice->qp_delta = 0;
+    slice->cabac_init_idc = hw_cfg->cabac_init_idc;
+
+    slice->idr_flag = 0;
+    slice->idr_pic_id = hw_cfg->idr_pic_id;
+}
 
 #define RD_LOG(bit, log, val) \
     do { \

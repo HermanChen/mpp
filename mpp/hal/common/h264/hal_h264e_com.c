@@ -444,7 +444,7 @@ static void h264e_set_vui(H264eVuiParam *vui)
 
 static void h264e_set_ref(H264eRefParam *ref)
 {
-    ref->i_frame_reference = H264E_NUM_REFS;
+    ref->i_frame_reference = 8;
     ref->i_dpb_size = H264E_NUM_REFS;
     ref->i_ref_pos = 1;
     ref->i_long_term_en = H264E_LONGTERM_REF_EN;
@@ -470,7 +470,6 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     MppEncPrepCfg *prep = &ctx->cfg->prep;
     MppEncRcCfg *rc = &ctx->cfg->rc;
     MppEncH264VuiCfg *vui = &codec->vui;
-    MppEncH264RefCfg *ref = &codec->ref;
     RK_S32 max_frame_num = 0;
 
     /* default settings */
@@ -499,8 +498,6 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     RK_S32 b_pic_struct = 0;
     RK_S32 analyse_mv_range = 128; //TODO: relative to level_idc, transplant x264_validate_levels.
     RK_S32 csp = 0;
-    RK_S32 i_dpb_size = ref->i_dpb_size;
-    RK_S32 i_frame_reference = ref->i_frame_reference;
 
     csp = h264e_set_format(hw_cfg, prep);
     sps->i_id = 0;
@@ -526,9 +523,8 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     /* extra slot with pyramid so that we don't have to override the
      * order of forgetting old pictures */
     sps->vui.i_max_dec_frame_buffering =
-        sps->i_num_ref_frames = H264E_HAL_MIN(H264E_REF_MAX, H264E_HAL_MAX4(i_frame_reference, 1 + sps->vui.i_num_reorder_frames,
-                                                                            i_bframe_pyramid ? 4 : 1, i_dpb_size)); //TODO: multi refs
-    sps->i_num_ref_frames -= i_bframe_pyramid == H264E_B_PYRAMID_STRICT; //TODO: multi refs
+        sps->i_num_ref_frames = ctx->usr_hier ? 8 : 1;
+
     sps->keyframe_max_interval = rc->gop;
     if (sps->keyframe_max_interval == 1) {
         sps->i_num_ref_frames = 0;
@@ -550,7 +546,7 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     if (hw_cfg->hw_type == H264E_RKV)
         sps->i_poc_type = 0;
     else // VPU
-        sps->i_poc_type = 2;
+        sps->i_poc_type = (ctx->usr_hier) ? 0 : 2;
 
     if ( sps->i_poc_type == 0  ) {
         RK_S32 max_delta_poc = (i_bframe + 2) * (!!i_bframe_pyramid + 1) * 2;
@@ -562,7 +558,7 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
 
     sps->vui.b_vui = 1;
 
-    sps->b_gaps_in_frame_num_value_allowed = 0;
+    sps->b_gaps_in_frame_num_value_allowed = 1;
     sps->b_frame_mbs_only = !(b_interlaced || b_fake_interlaced);
     if ( !sps->b_frame_mbs_only  )
         sps->i_mb_height = ( sps->i_mb_height + 1  ) & ~1;

@@ -161,6 +161,7 @@ typedef struct H264eFrmBufGrp_t {
 } H264eFrmBufGrp;
 
 typedef struct H264eDpbCfg_t {
+    RK_S32              poc_type;
     RK_S32              ref_frm_num;
     RK_S32              log2_max_frm_num;
     RK_S32              log2_max_poc_lsb;

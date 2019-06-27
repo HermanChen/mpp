@@ -183,10 +183,10 @@ typedef struct HalEncTask_t {
     // current mv info output buffer
     MppBuffer       mv_info;
 
-    RK_U32          is_intra;
+    RK_S32          is_intra;
+    RK_S32          temporal_id;
 
     HalEncTaskFlag  flags;
-
 } HalEncTask;
 
 typedef struct HalDecVprocTask_t {
