@@ -770,6 +770,11 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
         char *fmt = hier->ref_fmt;
         size_t size = sizeof(hier->ref_fmt);
 
+        if (!ref->gop_cfg_enable) {
+            ctx->usr_hier = 0;
+            break;
+        }
+
         if (ref->gop_cfg_mode == GopRefModeRockchip) {
             // Rockchip config mode
             if (ref->ref_gop_len > MAX_GOP_REF_LEN) {
