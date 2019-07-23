@@ -91,9 +91,12 @@ typedef struct {
 
     // gop reference config
     // 0 - default gop: I P P P
-    // 1 - typical tsvc4 gop
-    // 2 - base / enhance / enable_pred gop
+    // 1 - typical tsvc2 gop
+    // 2 - typical tsvc3 gop
+    // 3 - typical tsvc4 gop
+    // 4 - base / enhance / enable_pred gop
     RK_S32 gop_mode;
+    MppEncGopRef ref;
 } MpiEncTestData;
 
 static OptionInfo mpi_enc_cmd[] = {
@@ -281,6 +284,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
         codec_cfg->h264.change = MPP_ENC_H264_CFG_CHANGE_PROFILE |
                                  MPP_ENC_H264_CFG_CHANGE_ENTROPY |
                                  MPP_ENC_H264_CFG_CHANGE_TRANS_8x8;
+        codec_cfg->h264.svc = 1;
         /*
          * H.264 profile_idc parameter
          * 66  - Baseline profile
@@ -329,23 +333,32 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
         goto RET;
     }
 
-    p->sei_mode = MPP_ENC_SEI_MODE_ONE_FRAME;
+    p->sei_mode = MPP_ENC_SEI_MODE_DISABLE;
     ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
     if (ret) {
         mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
         goto RET;
     }
 
-    if (p->gop_mode) {
-        MppEncGopRef ref;
+    if (p->gop_mode && p->gop_mode < 4) {
+        // rockchip tsvc config
+        MppEncGopRef *ref = &p->ref;
+        MppGopRefInfo *gop = &ref->gop_info[0];
 
-        ref.change = 1;
-        ref.gop_cfg_enable = 1;
+        ref->change = 1;
+        ref->gop_cfg_enable = 1;
+        ref->gop_cfg_mode   = 0;
 
-        if (p->gop_mode == 1) {
-            MppGopRefInfo *gop = &ref.gop_info[0];
-            ref.gop_cfg_mode    = 0;
-            ref.ref_gop_len     = 8;
+        if (p->gop_mode == 3) {
+            // tsvc4
+            //      /-> P1      /-> P3        /-> P5      /-> P7
+            //     /           /             /           /
+            //    //--------> P2            //--------> P6
+            //   //                        //
+            //  ///---------------------> P4
+            // ///
+            // P0 ------------------------------------------------> P8
+            ref->ref_gop_len    = 8;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -364,12 +377,6 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[2].is_non_ref   = 0;
             gop[2].is_lt_ref    = 0;
             gop[2].lt_idx       = 0;
-
-            gop[3].temporal_id  = 3;
-            gop[3].ref_idx      = 2;
-            gop[3].is_non_ref   = 1;
-            gop[3].is_lt_ref    = 0;
-            gop[3].lt_idx       = 0;
 
             gop[3].temporal_id  = 3;
             gop[3].ref_idx      = 2;
@@ -407,14 +414,71 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[8].is_lt_ref    = 1;
             gop[8].lt_idx       = 0;
         } else if (p->gop_mode == 2) {
-            ref.hi_gop_mode     = 0;
-            ref.hi_base         = 1;
-            ref.hi_enhance      = 1;
-            ref.hi_enable_pred  = 1;
+            // tsvc3
+            //     /-> P1      /-> P3
+            //    /           /
+            //   //--------> P2
+            //  //
+            // P0/---------------------> P4
+            ref->ref_gop_len    = 4;
+
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 0;
+            gop[0].lt_idx       = 0;
+
+            gop[1].temporal_id  = 2;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
+
+            gop[2].temporal_id  = 1;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
+
+            gop[3].temporal_id  = 2;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
+
+            gop[4].temporal_id  = 0;
+            gop[4].ref_idx      = 0;
+            gop[4].is_non_ref   = 0;
+            gop[4].is_lt_ref    = 0;
+            gop[4].lt_idx       = 0;
+        } else if (p->gop_mode == 1) {
+            // tsvc2
+            //   /-> P1
+            //  /
+            // P0--------> P2
+            ref->ref_gop_len    = 2;
+
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 0;
+            gop[0].lt_idx       = 0;
+
+            gop[1].temporal_id  = 1;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
+
+            gop[2].temporal_id  = 0;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
         }
 
         mpp_log_f("MPP_ENC_SET_GOPREF start\n");
-        ret = mpi->control(ctx, MPP_ENC_SET_GOPREF, &ref);
+        ret = mpi->control(ctx, MPP_ENC_SET_GOPREF, ref);
         mpp_log_f("MPP_ENC_SET_GOPREF done ret %d\n", ret);
         if (ret) {
             mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
@@ -478,6 +542,55 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
                 goto RET;
         }
 
+#if 0
+        RK_S32 quotient = p->frame_count / 20;
+        RK_S32 remainder = p->frame_count % 20;
+
+        if (p->frame_count && remainder == 0) {
+            // test disable tsvc4
+            MppEncGopRef gop_ref;
+            MppEncGopRef *ref = &gop_ref;
+
+            ref->change = 1;
+            ref->gop_cfg_enable = 0;
+
+            if (quotient & 1) {
+                ref = &gop_ref;
+                mpp_log("enable tsvc\n");
+            } else {
+                ref = &p->ref;
+                mpp_log("disable tsvc\n");
+            }
+
+            mpp_log_f("MPP_ENC_SET_GOPREF start\n");
+            ret = mpi->control(ctx, MPP_ENC_SET_GOPREF, ref);
+            mpp_log_f("MPP_ENC_SET_GOPREF done ret %d\n", ret);
+            if (ret) {
+                mpp_err("mpi control enc set sei cfg failed ret %d\n", ret);
+                goto RET;
+            }
+
+            packet = NULL;
+            ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
+            if (ret) {
+                mpp_err("mpi control enc get extra info failed\n");
+                goto RET;
+            }
+
+            mpp_log_f("get header packet %p\n", packet);
+            /* get and write sps/pps for H.264 */
+            if (packet) {
+                void *ptr   = mpp_packet_get_pos(packet);
+                size_t len  = mpp_packet_get_length(packet);
+
+                if (p->fp_output)
+                    fwrite(ptr, 1, len, p->fp_output);
+
+                packet = NULL;
+            }
+        }
+#endif
+
         ret = mpp_frame_init(&frame);
         if (ret) {
             mpp_err_f("mpp_frame_init failed\n");
@@ -502,16 +615,24 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
             goto RET;
         }
 
-        ret = mpi->encode_get_packet(ctx, &packet);
-        if (ret) {
-            mpp_err("mpp encode get packet failed\n");
-            goto RET;
-        }
+        do {
+            ret = mpi->encode_get_packet(ctx, &packet);
+            if (ret) {
+                mpp_err("mpp encode get packet failed\n");
+                goto RET;
+            }
+        } while (NULL == packet);
+
+        mpp_assert(packet);
 
         if (packet) {
             // write packet to file here
             void *ptr   = mpp_packet_get_pos(packet);
             size_t len  = mpp_packet_get_length(packet);
+            MppMeta meta = mpp_packet_get_meta(packet);
+            RK_S32 temporal_id = 0;
+
+            mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
 
             p->pkt_eos = mpp_packet_get_eos(packet);
 
