@@ -213,8 +213,15 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
         h264e_dpb_build_marking(ctx->dpb);
     } else {
         RK_U32 buf2_idx = ctx->frame_cnt & 1;
+
         recn = bufs->hw_rec_buf[buf2_idx];
         refr = bufs->hw_rec_buf[1 - buf2_idx];
+        enc_task->temporal_id = 0;
+
+        if (ctx->dpb) {
+            h264e_dpb_deinit(ctx->dpb);
+            ctx->dpb = NULL;
+        }
     }
 
     memset(reg, 0, sizeof(H264eVpu2RegSet));
@@ -952,6 +959,11 @@ MPP_RET hal_h264e_vepu2_control(void *hal, RK_S32 cmd_type, void *param)
         MppEncHierCfg *hier = &ctx->hier_cfg;
         char *fmt = hier->ref_fmt;
         size_t size = sizeof(hier->ref_fmt);
+
+        if (!ref->gop_cfg_enable) {
+            ctx->usr_hier = 0;
+            break;
+        }
 
         if (ref->gop_cfg_mode == GopRefModeRockchip) {
             // Rockchip config mode
