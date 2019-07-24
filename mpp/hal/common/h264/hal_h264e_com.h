@@ -397,6 +397,10 @@ typedef struct H264eMbRcCtx_t {
     RK_S32  quality;
 } H264eMbRcCtx;
 
+#define HDR_NEED_UPDATED            (0x0001)
+#define HDR_UPDATED                 (0x0002)
+#define HDR_OUTPUTED                (0x0004)
+
 typedef struct H264eHalContext_t {
     MppHalApi                       api;
     IOInterruptCB                   int_cb;
@@ -421,6 +425,7 @@ typedef struct H264eHalContext_t {
 
     void                            *param_buf;
     MppPacket                       packeted_param;
+    RK_S32                          hdr_status;
 
     H264eOsdPltType                 osd_plt_type; //-1:invalid, 0:user define, 1:default
     MppEncOSDData                   osd_data;

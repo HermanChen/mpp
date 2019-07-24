@@ -174,6 +174,38 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
         return ret;
     }
 
+    if (ctx->hdr_status & HDR_NEED_UPDATED) {
+        mpp_log("update header\n");
+        mpp_assert(hw_cfg->frame_type == H264E_VPU_FRAME_I);
+        mpp_assert(!(ctx->hdr_status & HDR_UPDATED));
+
+        MppPacket  pkt = ctx->packeted_param;
+        H264eVpuExtraInfo *src = (H264eVpuExtraInfo *)ctx->extra_info;
+        H264eStream *sps_stream = &src->sps_stream;
+        H264eStream *pps_stream = &src->pps_stream;
+        H264eStream *sei_stream = &src->sei_stream;
+
+        size_t offset = 0;
+
+        h264e_vpu_set_extra_info(ctx);
+
+        mpp_packet_write(pkt, offset, sps_stream->buffer, sps_stream->byte_cnt);
+        offset += sps_stream->byte_cnt;
+
+        mpp_packet_write(pkt, offset, pps_stream->buffer, pps_stream->byte_cnt);
+        offset += pps_stream->byte_cnt;
+
+        mpp_packet_write(pkt, offset, sei_stream->buffer, sei_stream->byte_cnt);
+        offset += sei_stream->byte_cnt;
+
+        mpp_packet_set_length(pkt, offset);
+
+        ctx->hdr_status &= ~HDR_NEED_UPDATED;
+        ctx->hdr_status |= HDR_UPDATED;
+
+        mpp_log("header length %d\n", offset);
+    }
+
     mb_w = (prep->width  + 15) / 16;
     mb_h = (prep->height + 15) / 16;
 
@@ -788,6 +820,22 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
 
     //h264e_vpu_dump_mpp_strm_out(ctx, NULL);
 
+    if (!(ctx->hdr_status & HDR_OUTPUTED)) {
+        RK_U32 hdr_len = mpp_packet_get_length(ctx->packeted_param);
+        RK_U8 *hdr_ptr = mpp_packet_get_data(ctx->packeted_param);
+        RK_U32 len = task->enc.length;
+        RK_U8 *p = mpp_buffer_get_ptr(task->enc.output);
+        RK_U8 *d = mpp_malloc(RK_U8, len);
+
+        memcpy(d, p, len);
+        memcpy(p, hdr_ptr, hdr_len);
+        memcpy(p + hdr_len, d, len);
+
+        MPP_FREE(d);
+        ctx->hdr_status |= HDR_OUTPUTED;
+        task->enc.length += hdr_len;
+    }
+
     h264e_hal_leave();
 
     return MPP_OK;
@@ -846,6 +894,7 @@ MPP_RET hal_h264e_vepu2_control(void *hal, RK_S32 cmd_type, void *param)
         mpp_packet_set_length(pkt, offset);
 
         *pkt_out = pkt;
+        ctx->hdr_status = HDR_UPDATED | HDR_OUTPUTED;
     } break;
     case MPP_ENC_SET_PREP_CFG : {
         MppEncPrepCfg *set = &ctx->set->prep;
@@ -959,6 +1008,8 @@ MPP_RET hal_h264e_vepu2_control(void *hal, RK_S32 cmd_type, void *param)
         MppEncHierCfg *hier = &ctx->hier_cfg;
         char *fmt = hier->ref_fmt;
         size_t size = sizeof(hier->ref_fmt);
+
+        ctx->hdr_status = HDR_NEED_UPDATED;
 
         if (!ref->gop_cfg_enable) {
             ctx->usr_hier = 0;

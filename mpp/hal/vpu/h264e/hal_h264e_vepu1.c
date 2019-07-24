@@ -656,6 +656,7 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
         mpp_packet_set_length(pkt, offset);
 
         *pkt_out = pkt;
+        ctx->hdr_status = HDR_UPDATED | HDR_OUTPUTED;
     } break;
     case MPP_ENC_SET_PREP_CFG : {
         MppEncPrepCfg *set = &ctx->set->prep;
@@ -769,6 +770,8 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
         MppEncHierCfg *hier = &ctx->hier_cfg;
         char *fmt = hier->ref_fmt;
         size_t size = sizeof(hier->ref_fmt);
+
+        ctx->hdr_status = HDR_NEED_UPDATED;
 
         if (!ref->gop_cfg_enable) {
             ctx->usr_hier = 0;
