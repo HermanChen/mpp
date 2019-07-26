@@ -99,7 +99,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     RK_S32 bps      = cfg->bitRate;
     RK_S32 fps_in   = cfg->framerate;
     RK_S32 fps_out  = (cfg->framerateout) ? (cfg->framerateout) : (fps_in);
-    RK_S32 gop      = (cfg->intraPicRate) ? (cfg->intraPicRate) : (fps_out);
+    RK_S32 igop     = (cfg->intraPicRate) ? (cfg->intraPicRate) : (fps_out);
     RK_S32 qp_init  = (coding == MPP_VIDEO_CodingAVC) ? (26) :
                       (coding == MPP_VIDEO_CodingMJPEG) ? (10) :
                       (coding == MPP_VIDEO_CodingVP8) ? (56) :
@@ -108,12 +108,13 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     RK_S32 profile  = cfg->profileIdc;
     RK_S32 level    = cfg->levelIdc;
     RK_S32 cabac_en = cfg->enableCabac;
+    RK_S32 tsvc4_en = (cfg->cabacInitIdc >> 16) & 0xffff;
     RK_S32 rc_mode  = cfg->rc_mode;
 
     mpp_log("setup encoder rate control config:\n");
     mpp_log("width %4d height %4d format %d\n", width, height, fmt);
     mpp_log("rc_mode %s qp %d bps %d\n", (rc_mode) ? ("CBR") : ("CQP"), qp, bps);
-    mpp_log("fps in %d fps out %d gop %d\n", fps_in, fps_out, gop);
+    mpp_log("fps in %d fps out %d gop %d\n", fps_in, fps_out, igop);
     mpp_log("setup encoder stream feature config:\n");
     mpp_log("profile %d level %d cabac %d\n", profile, level, cabac_en);
 
@@ -160,7 +161,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     rc_cfg->fps_out_flex    = 0;
     rc_cfg->fps_out_num     = fps_out;
     rc_cfg->fps_out_denorm  = 1;
-    rc_cfg->gop             = gop;
+    rc_cfg->gop             = igop;
     rc_cfg->skip_cnt        = 0;
     ret = mpi->control(mpp_ctx, MPP_ENC_SET_RC_CFG, rc_cfg);
     if (ret) {
@@ -211,6 +212,81 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     ret = mpi->control(mpp_ctx, MPP_ENC_SET_CODEC_CFG, codec_cfg);
     if (ret)
         mpp_err("setup codec config failed ret %d\n", ret);
+
+    if (tsvc4_en) {
+        MppEncGopRef ref;
+        MppGopRefInfo *gop = &ref.gop_info[0];
+
+        ref.change          = 1;
+        ref.gop_cfg_enable  = 1;
+
+        ref.gop_cfg_mode    = 0;
+        ref.ref_gop_len     = 8;
+
+        gop[0].temporal_id  = 0;
+        gop[0].ref_idx      = 0;
+        gop[0].is_non_ref   = 0;
+        gop[0].is_lt_ref    = 1;
+        gop[0].lt_idx       = 0;
+
+        gop[1].temporal_id  = 3;
+        gop[1].ref_idx      = 0;
+        gop[1].is_non_ref   = 1;
+        gop[1].is_lt_ref    = 0;
+        gop[1].lt_idx       = 0;
+
+        gop[2].temporal_id  = 2;
+        gop[2].ref_idx      = 0;
+        gop[2].is_non_ref   = 0;
+        gop[2].is_lt_ref    = 0;
+        gop[2].lt_idx       = 0;
+
+        gop[3].temporal_id  = 3;
+        gop[3].ref_idx      = 2;
+        gop[3].is_non_ref   = 1;
+        gop[3].is_lt_ref    = 0;
+        gop[3].lt_idx       = 0;
+
+        gop[3].temporal_id  = 3;
+        gop[3].ref_idx      = 2;
+        gop[3].is_non_ref   = 1;
+        gop[3].is_lt_ref    = 0;
+        gop[3].lt_idx       = 0;
+
+        gop[4].temporal_id  = 1;
+        gop[4].ref_idx      = 0;
+        gop[4].is_non_ref   = 0;
+        gop[4].is_lt_ref    = 1;
+        gop[4].lt_idx       = 1;
+
+        gop[5].temporal_id  = 3;
+        gop[5].ref_idx      = 4;
+        gop[5].is_non_ref   = 1;
+        gop[5].is_lt_ref    = 0;
+        gop[5].lt_idx       = 0;
+
+        gop[6].temporal_id  = 2;
+        gop[6].ref_idx      = 4;
+        gop[6].is_non_ref   = 0;
+        gop[6].is_lt_ref    = 0;
+        gop[6].lt_idx       = 0;
+
+        gop[7].temporal_id  = 3;
+        gop[7].ref_idx      = 6;
+        gop[7].is_non_ref   = 1;
+        gop[7].is_lt_ref    = 0;
+        gop[7].lt_idx       = 0;
+
+        gop[8].temporal_id  = 0;
+        gop[8].ref_idx      = 0;
+        gop[8].is_non_ref   = 0;
+        gop[8].is_lt_ref    = 1;
+        gop[8].lt_idx       = 0;
+
+        ret = mpi->control(mpp_ctx, MPP_ENC_SET_GOPREF, &ref);
+        if (ret)
+            mpp_err("mpi control enc set gop ref failed ret %d\n", ret);
+    }
 RET:
     return ret;
 }
