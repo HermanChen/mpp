@@ -1197,7 +1197,16 @@ RK_S32 VpuApiLegacy::encode(VpuCodecContext *ctx, EncInputStream_t *aEncInStrm, 
         aEncOut->timeUs = pts;
         aEncOut->keyFrame = (flag & MPP_PACKET_FLAG_INTRA) ? (1) : (0);
 
-        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %d eos %d\n",
+        // get temporal id
+        {
+            RK_S32 temporal_id = 0;
+            MppMeta meta = mpp_packet_get_meta(packet);
+
+            mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+            aEncOut->keyFrame |= temporal_id << 28;
+        }
+
+        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %x eos %d\n",
                            packet, length, pts, aEncOut->keyFrame, eos);
 
         mpp_packet_deinit(&packet);
@@ -1369,7 +1378,15 @@ RK_S32 VpuApiLegacy::encoder_getstream(VpuCodecContext *ctx, EncoderOut_t *aEncO
         aEncOut->size = (RK_S32)length;
         aEncOut->timeUs = pts;
         aEncOut->keyFrame = (flag & MPP_PACKET_FLAG_INTRA) ? (1) : (0);
-        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %d eos %d\n",
+        // get temporal id
+        {
+            RK_S32 temporal_id = 0;
+            MppMeta meta = mpp_packet_get_meta(packet);
+
+            mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+            aEncOut->keyFrame |= temporal_id << 28;
+        }
+        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %x eos %d\n",
                            packet, length, pts, aEncOut->keyFrame, eos);
 
         mEosSet = eos;
