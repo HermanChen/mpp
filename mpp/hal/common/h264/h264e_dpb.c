@@ -348,6 +348,7 @@ MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg)
         if (ref_idx == i)
             continue;
 
+        mpp_assert(!dpb->ref_inf[ref_idx].is_non_ref);
         dpb->ref_sta[ref_idx] |= REF_BY_REFR(i);
         dpb->ref_cnt[ref_idx]++;
 

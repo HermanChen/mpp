@@ -108,7 +108,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     RK_S32 profile  = cfg->profileIdc;
     RK_S32 level    = cfg->levelIdc;
     RK_S32 cabac_en = cfg->enableCabac;
-    RK_S32 tsvc4_en = (cfg->cabacInitIdc >> 16) & 0xffff;
+    RK_S32 tsvcx_en = (cfg->cabacInitIdc >> 16) & 0xffff;
     RK_S32 rc_mode  = cfg->rc_mode;
 
     mpp_log("setup encoder rate control config:\n");
@@ -213,7 +213,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     if (ret)
         mpp_err("setup codec config failed ret %d\n", ret);
 
-    if (tsvc4_en) {
+    if (tsvcx_en) {
         MppEncGopRef ref;
         MppGopRefInfo *gop = &ref.gop_info[0];
 
@@ -221,69 +221,152 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
         ref.gop_cfg_enable  = 1;
 
         ref.gop_cfg_mode    = 0;
-        ref.ref_gop_len     = 8;
 
-        gop[0].temporal_id  = 0;
-        gop[0].ref_idx      = 0;
-        gop[0].is_non_ref   = 0;
-        gop[0].is_lt_ref    = 1;
-        gop[0].lt_idx       = 0;
+        switch (tsvcx_en) {
+        case 1 : {
+            // tsvc2
+            //   /-> P1
+            //  /
+            // P0--------> P2
+            ref.ref_gop_len     = 2;
 
-        gop[1].temporal_id  = 3;
-        gop[1].ref_idx      = 0;
-        gop[1].is_non_ref   = 1;
-        gop[1].is_lt_ref    = 0;
-        gop[1].lt_idx       = 0;
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 0;
+            gop[0].lt_idx       = 0;
 
-        gop[2].temporal_id  = 2;
-        gop[2].ref_idx      = 0;
-        gop[2].is_non_ref   = 0;
-        gop[2].is_lt_ref    = 0;
-        gop[2].lt_idx       = 0;
+            gop[1].temporal_id  = 1;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
 
-        gop[3].temporal_id  = 3;
-        gop[3].ref_idx      = 2;
-        gop[3].is_non_ref   = 1;
-        gop[3].is_lt_ref    = 0;
-        gop[3].lt_idx       = 0;
+            gop[2].temporal_id  = 0;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
+        } break;
+        case 2 : {
+            // tsvc3
+            //     /-> P1      /-> P3
+            //    /           /
+            //   //--------> P2
+            //  //
+            // P0/---------------------> P4
+            ref.ref_gop_len     = 4;
 
-        gop[3].temporal_id  = 3;
-        gop[3].ref_idx      = 2;
-        gop[3].is_non_ref   = 1;
-        gop[3].is_lt_ref    = 0;
-        gop[3].lt_idx       = 0;
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 0;
+            gop[0].lt_idx       = 0;
 
-        gop[4].temporal_id  = 1;
-        gop[4].ref_idx      = 0;
-        gop[4].is_non_ref   = 0;
-        gop[4].is_lt_ref    = 1;
-        gop[4].lt_idx       = 1;
+            gop[1].temporal_id  = 2;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
 
-        gop[5].temporal_id  = 3;
-        gop[5].ref_idx      = 4;
-        gop[5].is_non_ref   = 1;
-        gop[5].is_lt_ref    = 0;
-        gop[5].lt_idx       = 0;
+            gop[2].temporal_id  = 1;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
 
-        gop[6].temporal_id  = 2;
-        gop[6].ref_idx      = 4;
-        gop[6].is_non_ref   = 0;
-        gop[6].is_lt_ref    = 0;
-        gop[6].lt_idx       = 0;
+            gop[3].temporal_id  = 2;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
 
-        gop[7].temporal_id  = 3;
-        gop[7].ref_idx      = 6;
-        gop[7].is_non_ref   = 1;
-        gop[7].is_lt_ref    = 0;
-        gop[7].lt_idx       = 0;
+            gop[4].temporal_id  = 0;
+            gop[4].ref_idx      = 0;
+            gop[4].is_non_ref   = 0;
+            gop[4].is_lt_ref    = 0;
+            gop[4].lt_idx       = 0;
+        } break;
+        case 3 : {
+            // tsvc4
+            //      /-> P1      /-> P3        /-> P5      /-> P7
+            //     /           /             /           /
+            //    //--------> P2            //--------> P6
+            //   //                        //
+            //  ///---------------------> P4
+            // ///
+            // P0 ------------------------------------------------> P8
+            ref.ref_gop_len     = 8;
 
-        gop[8].temporal_id  = 0;
-        gop[8].ref_idx      = 0;
-        gop[8].is_non_ref   = 0;
-        gop[8].is_lt_ref    = 1;
-        gop[8].lt_idx       = 0;
+            gop[0].temporal_id  = 0;
+            gop[0].ref_idx      = 0;
+            gop[0].is_non_ref   = 0;
+            gop[0].is_lt_ref    = 1;
+            gop[0].lt_idx       = 0;
 
-        ret = mpi->control(mpp_ctx, MPP_ENC_SET_GOPREF, &ref);
+            gop[1].temporal_id  = 3;
+            gop[1].ref_idx      = 0;
+            gop[1].is_non_ref   = 1;
+            gop[1].is_lt_ref    = 0;
+            gop[1].lt_idx       = 0;
+
+            gop[2].temporal_id  = 2;
+            gop[2].ref_idx      = 0;
+            gop[2].is_non_ref   = 0;
+            gop[2].is_lt_ref    = 0;
+            gop[2].lt_idx       = 0;
+
+            gop[3].temporal_id  = 3;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
+
+            gop[3].temporal_id  = 3;
+            gop[3].ref_idx      = 2;
+            gop[3].is_non_ref   = 1;
+            gop[3].is_lt_ref    = 0;
+            gop[3].lt_idx       = 0;
+
+            gop[4].temporal_id  = 1;
+            gop[4].ref_idx      = 0;
+            gop[4].is_non_ref   = 0;
+            gop[4].is_lt_ref    = 1;
+            gop[4].lt_idx       = 1;
+
+            gop[5].temporal_id  = 3;
+            gop[5].ref_idx      = 4;
+            gop[5].is_non_ref   = 1;
+            gop[5].is_lt_ref    = 0;
+            gop[5].lt_idx       = 0;
+
+            gop[6].temporal_id  = 2;
+            gop[6].ref_idx      = 4;
+            gop[6].is_non_ref   = 0;
+            gop[6].is_lt_ref    = 0;
+            gop[6].lt_idx       = 0;
+
+            gop[7].temporal_id  = 3;
+            gop[7].ref_idx      = 6;
+            gop[7].is_non_ref   = 1;
+            gop[7].is_lt_ref    = 0;
+            gop[7].lt_idx       = 0;
+
+            gop[8].temporal_id  = 0;
+            gop[8].ref_idx      = 0;
+            gop[8].is_non_ref   = 0;
+            gop[8].is_lt_ref    = 1;
+            gop[8].lt_idx       = 0;
+        } break;
+        default : {
+            mpp_err("invalid tsvcx flag %d\n", tsvcx_en);
+            ret = MPP_NOK;
+        } break;
+        }
+
+        if (!ret)
+            ret = mpi->control(mpp_ctx, MPP_ENC_SET_GOPREF, &ref);
+
         if (ret)
             mpp_err("mpi control enc set gop ref failed ret %d\n", ret);
     }
