@@ -50,6 +50,7 @@
 #define H264D_DBG_WRITE_ES_EN       (0x00010000)   //!< write input ts stream
 #define H264D_DBG_FIELD_PAIRED      (0x00020000)
 #define H264D_DBG_DISCONTINUOUS     (0x00040000)
+#define H264D_DBG_GOP_INFO          (0x00080000)   //!< tsvc gop info
 
 extern RK_U32 rkv_h264d_parse_debug;
 
@@ -1170,6 +1171,73 @@ typedef struct h264_err_ctx_t {
     RK_U32    i_slice_no;
     RK_S32    first_iframe_poc;
 } H264dErrCtx_t;
+
+// max gop size is 8 but for I frame we need to record 9 frames
+#define MAX_DEC_GOP_SIZE        8
+#define MAX_DEC_GOP_MASK        (MAX_DEC_GOP_SIZE-1)
+#define MAX_GOP_REC_SIZE        ((MAX_DEC_GOP_SIZE)*2)
+
+typedef enum H264dGopPattern_e {
+    GOP_IPPPP,
+    GOP_TSVC2,
+    GOP_TSVC3,
+    GOP_TSVC4,
+    GOP_PATTERN_BUTT,
+} H264dGopPattern;
+
+typedef struct h264_gop_ctx_t {
+    /*
+     * Flag for gop pattern detection
+     * Init as -1 when decoding one frame it is enabled
+     * If B slice found it is disabled for ever.
+     */
+    RK_S32      disable_detection;
+    /*
+     * tsvc mode matching flag
+     * Init as -1 for unknown pattern
+     * 0 - for normal stream of I P P P P ...
+     * 1 - for tsvc2
+     * 2 - for tsvc3
+     * 3 - for tsvc4
+     */
+    RK_S32      curr_tsvc_mode;
+    RK_S32      last_tsvc_mode;
+    RK_S32      curr_tid;
+    RK_S32      curr_gop_idx;
+    RK_S32      curr_err_skip;
+    RK_S32      curr_err_report;
+    RK_S32      *curr_tid_set;
+
+    // overall frame counter
+    RK_S32      frm_cnt;
+
+    // gop counter
+    RK_S32      gop_cnt;
+    // current frame index in current gop
+    RK_S32      gop_idx;
+    // valid slot count
+    RK_S32      gop_len;
+    // max slot count
+    RK_S32      gop_size;
+
+    // gop statistic infomation
+    RK_S32      curr_max_ref_diff;
+    RK_S32      last_max_ref_diff;
+
+    // slot index for recording and maching
+    RK_S32      gop_ref[MAX_GOP_REC_SIZE];
+    RK_S32      gop_poc[MAX_GOP_REC_SIZE];
+    RK_S32      gop_dif[MAX_GOP_REC_SIZE];
+    // temporal layer id
+    RK_S32      gop_tid[MAX_GOP_REC_SIZE];
+    RK_S32      gop_err[MAX_GOP_REC_SIZE];
+
+    RK_S32      *ipppp_tid;
+    RK_S32      *tsvc2_tid;
+    RK_S32      *tsvc3_tid;
+    RK_S32      *tsvc4_tid;
+} h264_gop_ctx_t;
+
 //!< decoder video parameter
 typedef struct h264_dec_ctx_t {
     struct h264d_mem_t        *mem;
@@ -1203,6 +1271,7 @@ typedef struct h264_dec_ctx_t {
     RK_U32                     disable_error;
     RK_U32                     immediate_out;
     struct h264_err_ctx_t      errctx;
+    struct h264_gop_ctx_t      gopctx;
 } H264_DecCtx_t;
 
 #endif /* __H264D_GLOBAL_H__ */

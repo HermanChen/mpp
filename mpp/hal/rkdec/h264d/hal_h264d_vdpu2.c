@@ -836,6 +836,7 @@ __RETURN:
     (void)task;
     return ret = MPP_OK;
 }
+
 /*!
 ***********************************************************************
 * \brief
@@ -872,6 +873,7 @@ __SKIP_HARD:
         if (!p_regs->sw55.dec_rdy_sts) {
             m_ctx.hard_err = 1;
         }
+
         m_ctx.task = (void *)&task->dec;
         m_ctx.regs = (RK_U32 *)reg_ctx->regs;
         p_hal->init_cb.callBack(p_hal->init_cb.opaque, &m_ctx);

@@ -165,6 +165,9 @@ typedef struct HalDecTask_t {
 
     // current task reference slot index, -1 for unused
     RK_S32          refer[MAX_DEC_REF_NUM];
+
+    RK_S32          temp_id;
+    RK_S32          gop_idx;
 } HalDecTask;
 
 typedef struct HalEncTask_t {

@@ -715,6 +715,7 @@ MPP_RET rkv_h264d_start(void *hal, HalTaskInfo *task)
 __RETURN:
     return ret = MPP_OK;
 }
+
 /*!
 ***********************************************************************
 * \brief
@@ -757,6 +758,7 @@ __SKIP_HARD:
             || p_regs->sw76.strmd_detect_error_flag) {
             m_ctx.hard_err = 1;
         }
+
         m_ctx.task = (void *)&task->dec;
         m_ctx.regs = (RK_U32 *)p_regs;
         p_hal->init_cb.callBack(p_hal->init_cb.opaque, &m_ctx);

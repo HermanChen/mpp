@@ -232,6 +232,23 @@ static MPP_RET free_dec_ctx(H264_DecCtx_t *p_Dec)
 __RETURN:
     return ret = MPP_OK;
 }
+
+static RK_S32 ipppp_tid[MAX_DEC_GOP_SIZE] = {
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+static RK_S32 tsvc2_tid[MAX_DEC_GOP_SIZE] = {
+    0, 1, 0, 1, 0, 1, 0, 1,
+};
+
+static RK_S32 tsvc3_tid[MAX_DEC_GOP_SIZE] = {
+    0, 2, 1, 2, 0, 2, 1, 2,
+};
+
+static RK_S32 tsvc4_tid[MAX_DEC_GOP_SIZE] = {
+    0, 3, 2, 3, 1, 3, 2, 3,
+};
+
 static MPP_RET init_dec_ctx(H264_DecCtx_t *p_Dec)
 {
     RK_U32 i = 0;
@@ -266,6 +283,18 @@ static MPP_RET init_dec_ctx(H264_DecCtx_t *p_Dec)
     p_Dec->have_slice_data = 0;
     p_Dec->last_frame_slot_idx = -1;
     memset(&p_Dec->errctx, 0, sizeof(H264dErrCtx_t));
+    {
+        struct h264_gop_ctx_t *gop = &p_Dec->gopctx;
+        memset(gop, 0, sizeof(p_Dec->gopctx));
+        gop->curr_tsvc_mode = -1;
+        gop->last_tsvc_mode = -1;
+        gop->gop_size = MAX_GOP_REC_SIZE;
+        gop->ipppp_tid = ipppp_tid;
+        gop->tsvc2_tid = tsvc2_tid;
+        gop->tsvc3_tid = tsvc3_tid;
+        gop->tsvc4_tid = tsvc4_tid;
+    }
+
 __RETURN:
     return ret = MPP_OK;
 
@@ -651,14 +680,19 @@ MPP_RET h264d_callback(void *decoder, void *errinfo)
 
         mpp_buf_slot_get_prop(p_Dec->frame_slots, task_dec->output, SLOT_FRAME_PTR, &mframe);
         if (mframe) {
+            h264_gop_ctx_t *gop = &p_Dec->gopctx;
             RK_U32 task_err = task_dec->flags.parse_err || task_dec->flags.ref_err;
+
             if (ctx->hard_err || task_err) {
                 if (task_dec->flags.used_for_ref) {
                     mpp_frame_set_errinfo(mframe, MPP_FRAME_ERR_UNKNOW);
                 } else {
                     mpp_frame_set_discard(mframe, MPP_FRAME_ERR_UNKNOW);
                 }
+
             }
+
+            gop->gop_err[task_dec->gop_idx] = (ctx->hard_err || task_err) ? 1 : 0;
             H264D_DBG(H264D_DBG_CALLBACK, "[CALLBACK] g_no=%d, out_idx=%d, dpberr=%d, harderr=%d, ref_flag=%d, errinfo=%d, discard=%d\n",
                       p_Dec->p_Vid->g_framecnt, task_dec->output, task_err, ctx->hard_err, task_dec->flags.used_for_ref,
                       mpp_frame_get_errinfo(mframe), mpp_frame_get_discard(mframe));

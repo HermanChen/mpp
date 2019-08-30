@@ -531,7 +531,7 @@ static MPP_RET check_dpb_discontinuous(H264_StorePic_t *p_last, H264_StorePic_t 
             error_flag = 1;
         currSlice->p_Dec->errctx.cur_err_flag |= error_flag ? 1 : 0;
 
-        H264D_DBG(H264D_DBG_DISCONTINUOUS, "[discontinuous] last_slice=%d, cur_slice=%d, last_fnum=%d, cur_fnum=%d, last_poc=%d, cur_poc=%d",
+        H264D_DBG(H264D_DBG_DISCONTINUOUS, "[discontinuous] last_slice=%d, cur_slice=%d, last_fnum=%d, cur_fnum=%d, last_poc=%d, cur_frm_num=%d",
                   p_last->slice_type, dec_pic->slice_type, p_last->frame_num, dec_pic->frame_num, p_last->poc, dec_pic->poc);
     }
 #endif
@@ -1427,7 +1427,6 @@ static void check_refer_picture_lists(H264_SLICE_t *currSlice)
         p_err->dpb_err_flag = 0;
         return;
     }
-#if 1
 
     if ((currSlice->slice_type % 5) != I_SLICE
         && (currSlice->slice_type % 5) != SI_SLICE) {
@@ -1460,9 +1459,229 @@ static void check_refer_picture_lists(H264_SLICE_t *currSlice)
             H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] error, B frame only has one refer");
         }
     }
+}
 
-#endif
+static void check_gop_pattern(H264_SLICE_t *currSlice)
+{
+    H264_DecCtx_t *p_Dec = currSlice->p_Dec;
+    h264_gop_ctx_t *gop = &p_Dec->gopctx;
+    H264dErrCtx_t *p_err = &p_Dec->errctx;
 
+    if (gop->disable_detection)
+        return ;
+
+    // if B slice or field are found disable detection
+    if (B_SLICE == currSlice->slice_type || currSlice->field_pic_flag) {
+        gop->disable_detection = 1;
+        return ;
+    }
+
+    // if not first mb return
+    if (currSlice->start_mb_nr)
+        return ;
+
+    struct h264d_video_ctx_t *p_Vid = p_Dec->p_Vid;
+    RK_S32 gop_idx = gop->gop_idx;
+    RK_S32 cur_poc = p_Vid->dec_pic->poc;
+    RK_S32 dif_gop_pos = 0;
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "frm %4d gop %3d %3d poc %d type %d\n", gop->frm_cnt,
+              gop->gop_cnt, gop->gop_idx, cur_poc, currSlice->slice_type);
+
+    gop->gop_err[gop_idx] = 0;
+    gop->curr_err_skip = 0;
+    gop->curr_err_report = 0;
+
+    // I slice goto update stage
+    if (I_SLICE == currSlice->slice_type) {
+        gop_idx = 0;
+
+        if (gop->frm_cnt)
+            gop->gop_cnt++;
+
+        goto UPDATE_GOP_INFO;
+    }
+
+    // do reorder here
+    struct h264_dpb_buf_t *p_Dpb = p_Vid->p_Dpb_layer[p_Vid->dec_pic->layer_id];
+    struct h264_refpic_info_t *ref = p_Dec->refpic_info_p;
+    RK_S32 dpb_size = p_Dpb->used_size;
+
+    mpp_assert(ref->valid);
+
+    if (currSlice->ref_pic_list_reordering_flag[LIST_0]) {
+        // only detect one reorder cmd for TSVC
+        struct h264_dpb_info_t *dpb_info = p_Dec->dpb_info;
+        RK_S32 i;
+        RK_S32 curr_frm_num = currSlice->frame_num;
+        RK_S32 pic_num_idc = currSlice->modification_of_pic_nums_idc[LIST_0][0];
+        RK_S32 abs_diff_pic_num = currSlice->abs_diff_pic_num_minus1[LIST_0][0] + 1;
+        RK_S32 long_term_pic_idx = currSlice->long_term_pic_idx[LIST_0][0];
+
+        if (pic_num_idc != 3) {
+            switch (pic_num_idc) {
+            case 0 : {
+                RK_S32 ref_frm_num = curr_frm_num - abs_diff_pic_num;
+
+                H264D_DBG(H264D_DBG_GOP_INFO, "modification_of_pic_nums_idc %d abs_diff_pic_num %d\n",
+                          pic_num_idc, abs_diff_pic_num);
+
+                for (i = 0; i < dpb_size; i++, ref++) {
+                    mpp_assert(ref->valid);
+                    RK_S32 dpb_idx = ref->dpb_idx;
+
+                    H264D_DBG(H264D_DBG_GOP_INFO, "dpb: idx %d frame_num %d vs ref %d\n",
+                              dpb_idx, dpb_info[dpb_idx].frame_num, ref_frm_num);
+
+                    if (dpb_info[dpb_idx].frame_num == ref_frm_num)
+                        break;
+                }
+            } break;
+            case 2 : {
+                H264D_DBG(H264D_DBG_GOP_INFO, "modification_of_pic_nums_idc %d long_term_pic_idx %d\n",
+                          pic_num_idc, long_term_pic_idx);
+
+                for (i = 0; i < dpb_size; i++, ref++) {
+                    mpp_assert(ref->valid);
+                    RK_S32 dpb_idx = ref->dpb_idx;
+
+                    H264D_DBG(H264D_DBG_GOP_INFO, "dpb: idx %d lt %d idc %d vs idc %d frm_num %d\n",
+                              dpb_idx, dpb_info[dpb_idx].is_long_term,
+                              dpb_info[dpb_idx].long_term_frame_idx,
+                              long_term_pic_idx, dpb_info[dpb_idx].TOP_POC);
+
+                    if (!dpb_info[dpb_idx].is_long_term)
+                        continue;
+
+                    if ((RK_S32)dpb_info[dpb_idx].long_term_frame_idx == long_term_pic_idx)
+                        break;
+                }
+            } break;
+            default : {
+                goto DISABLE_DETECTION;
+            } break;
+            }
+        }
+
+        pic_num_idc = currSlice->modification_of_pic_nums_idc[LIST_0][1];
+        // if there is more reorder cmd disable detection
+        if (pic_num_idc != 3)
+            goto DISABLE_DETECTION;
+    }
+
+    RK_S32 ref_poc = p_Dec->dpb_info[ref->dpb_idx].TOP_POC;
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "ref %4d: valid %d dpb_idx %d poc %d\n",
+              cur_poc, ref->valid, ref->dpb_idx, ref_poc);
+
+    RK_S32 i;
+    //RK_S32 cur_idx = gop->gop_idx;
+
+    // zero diff poc for unknown poc diff
+    for (i = 0; i < gop->gop_len; i++) {
+        if (gop->gop_poc[i] == ref_poc && gop->gop_ref[i]) {
+            dif_gop_pos = gop->gop_idx - i;
+            if (dif_gop_pos < 0)
+                dif_gop_pos += gop->gop_size;
+
+            gop->curr_err_skip = gop->gop_err[i];
+            break;
+        }
+    }
+
+UPDATE_GOP_INFO:
+    gop->curr_gop_idx = gop_idx;
+    gop->gop_ref[gop_idx] = currSlice->nal_reference_idc > 0;
+    gop->gop_poc[gop_idx] = cur_poc;
+    gop->gop_dif[gop_idx] = dif_gop_pos;
+    gop->gop_err[gop_idx] = gop->curr_err_skip;
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop ref %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_ref[0],  gop->gop_ref[1],  gop->gop_ref[2],  gop->gop_ref[3],
+              gop->gop_ref[4],  gop->gop_ref[5],  gop->gop_ref[6],  gop->gop_ref[7],
+              gop->gop_ref[8],  gop->gop_ref[9],  gop->gop_ref[10], gop->gop_ref[11],
+              gop->gop_ref[12], gop->gop_ref[13], gop->gop_ref[14], gop->gop_ref[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop poc %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_poc[0],  gop->gop_poc[1],  gop->gop_poc[2],  gop->gop_poc[3],
+              gop->gop_poc[4],  gop->gop_poc[5],  gop->gop_poc[6],  gop->gop_poc[7],
+              gop->gop_poc[8],  gop->gop_poc[9],  gop->gop_poc[10], gop->gop_poc[11],
+              gop->gop_poc[12], gop->gop_poc[13], gop->gop_poc[14], gop->gop_poc[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop dif %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_dif[0],  gop->gop_dif[1],  gop->gop_dif[2],  gop->gop_dif[3],
+              gop->gop_dif[4],  gop->gop_dif[5],  gop->gop_dif[6],  gop->gop_dif[7],
+              gop->gop_dif[8],  gop->gop_dif[9],  gop->gop_dif[10], gop->gop_dif[11],
+              gop->gop_dif[12], gop->gop_dif[13], gop->gop_dif[14], gop->gop_dif[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop err %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_err[0],  gop->gop_err[1],  gop->gop_err[2],  gop->gop_err[3],
+              gop->gop_err[4],  gop->gop_err[5],  gop->gop_err[6],  gop->gop_err[7],
+              gop->gop_err[8],  gop->gop_err[9],  gop->gop_err[10], gop->gop_err[11],
+              gop->gop_err[12], gop->gop_err[13], gop->gop_err[14], gop->gop_err[15]);
+
+    // start checking gop mode
+    // check normal mode first
+    if (!gop_idx) {
+        // only update when gop size is full filled
+        // NOTE: use gop->gop_idx is for last gop size length
+        if (gop->gop_idx > MAX_DEC_GOP_SIZE || gop->gop_len == gop->gop_size)
+            gop->last_max_ref_diff = gop->curr_max_ref_diff;
+
+        gop->curr_max_ref_diff = 1;
+    }
+
+    if (dif_gop_pos > gop->curr_max_ref_diff)
+        gop->curr_max_ref_diff = dif_gop_pos;
+
+    // use max ref diff gap to define TSVC mode
+    if (gop->curr_max_ref_diff == 1) {
+        gop->curr_tsvc_mode = 0;
+        gop->curr_tid_set = gop->ipppp_tid;
+    } else if (gop->curr_max_ref_diff == 2) {
+        gop->curr_tsvc_mode = 1;
+        gop->curr_tid_set = gop->tsvc2_tid;
+    } else if (gop->curr_max_ref_diff == 4) {
+        gop->curr_tsvc_mode = 2;
+        gop->curr_tid_set = gop->tsvc3_tid;
+    } else if (gop->curr_max_ref_diff == 8) {
+        gop->curr_tsvc_mode = 3;
+        gop->curr_tid_set = gop->tsvc4_tid;
+    } else
+        goto DISABLE_DETECTION;
+
+    gop->curr_tid = gop->curr_tid_set[gop_idx & MAX_DEC_GOP_MASK];
+    if (gop->curr_tid == 0 && gop->curr_err_skip)
+        gop->curr_err_report = 1;
+    else
+        gop->curr_err_report = 0;
+
+    if (gop->curr_err_skip)
+        p_err->cur_err_flag |= 1;
+
+    p_Dec->in_task->temp_id = gop->curr_tid;
+    p_Dec->in_task->gop_idx = gop->curr_gop_idx;
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "%d max ref diff last %d curr %d tsvc%d tid %d\n", gop->frm_cnt,
+              gop->last_max_ref_diff, gop->curr_max_ref_diff, gop->curr_tsvc_mode + 1, gop->curr_tid);
+
+    gop->frm_cnt++;
+    gop_idx++;
+    if (gop_idx >= gop->gop_size) {
+        gop_idx = 0;
+        gop->gop_cnt++;
+    }
+    if (gop->gop_len < gop->gop_size)
+        gop->gop_len++;
+
+    gop->gop_idx = gop_idx;
+
+    return ;
+
+DISABLE_DETECTION:
+    gop->disable_detection = 1;
+    mpp_log_f("disable tsvc detection\n");
+    return ;
 }
 
 static void reset_dpb_info(H264_DpbInfo_t *p)
@@ -1813,18 +2032,18 @@ static MPP_RET prepare_init_ref_info(H264_SLICE_t *currSlice)
     //!< check dpb list poc
 #if 0
     {
-        RK_S32 cur_poc = p_Dec->p_Vid->dec_pic->poc;
+        RK_S32 cur_frm_num = p_Dec->p_Vid->dec_pic->poc;
         if ((currSlice->slice_type % 5) != I_SLICE
             && (currSlice->slice_type % 5) != SI_SLICE) {
-            if (cur_poc < min_poc) {
+            if (cur_frm_num < min_poc) {
                 p_Dec->errctx.cur_err_flag |= 1;
-                H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] min_poc=%d, dec_poc=%d", min_poc, cur_poc);
+                H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] min_poc=%d, dec_poc=%d", min_poc, cur_frm_num);
             }
         }
         if (currSlice->slice_type % 5 == B_SLICE) {
-            if (cur_poc > max_poc) {
+            if (cur_frm_num > max_poc) {
                 p_Dec->errctx.cur_err_flag |= 1;
-                H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] max_poc=%d, dec_poc=%d", max_poc, cur_poc);
+                H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] max_poc=%d, dec_poc=%d", max_poc, cur_frm_num);
             }
         }
     }
@@ -1998,6 +2217,7 @@ MPP_RET init_picture(H264_SLICE_t *currSlice)
     prepare_init_dpb_info(currSlice);
     prepare_init_ref_info(currSlice);
 
+    check_gop_pattern(currSlice);
     FUN_CHECK(ret = check_refer_dpb_buf_slots(currSlice));
     check_refer_picture_lists(currSlice);
 
