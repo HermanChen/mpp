@@ -684,12 +684,11 @@ MPP_RET h264d_callback(void *decoder, void *errinfo)
             RK_U32 task_err = task_dec->flags.parse_err || task_dec->flags.ref_err;
 
             if (ctx->hard_err || task_err) {
-                if (task_dec->flags.used_for_ref) {
+                if (task_dec->flags.used_for_ref && !task_dec->temp_id) {
                     mpp_frame_set_errinfo(mframe, MPP_FRAME_ERR_UNKNOW);
                 } else {
                     mpp_frame_set_discard(mframe, MPP_FRAME_ERR_UNKNOW);
                 }
-
             }
 
             gop->gop_err[task_dec->gop_idx] = (ctx->hard_err || task_err) ? 1 : 0;

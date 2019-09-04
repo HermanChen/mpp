@@ -641,7 +641,8 @@ static void setup_VPU_FRAME_from_mpp_frame(VPU_FRAME *vframe, MppFrame mframe)
         else if (field_order == MPP_FRAME_FLAG_DEINTERLACED)
             vframe->FrameType = 4;
     }
-    vframe->ErrorInfo = mpp_frame_get_errinfo(mframe) | mpp_frame_get_discard(mframe);
+    vframe->ErrorInfo = mpp_frame_get_errinfo(mframe) |
+                        (mpp_frame_get_discard(mframe) << 16);
     vframe->ShowTime.TimeHigh = (RK_U32)(pts >> 32);
     vframe->ShowTime.TimeLow = (RK_U32)pts;
     switch (mpp_frame_get_fmt(mframe)) {
