@@ -70,6 +70,96 @@ static RK_S32 find_best_qp(MppLinReg *ctx, MppEncH264Cfg *codec,
 
 #define WORD_CNT_MAX      65535
 
+void h264e_vpu_rc_calIfrmqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
+{
+    int intraQpDelta = -3;
+    MppEncCfgSet *cfg = ctx->cfg;
+    MppEncH264Cfg *codec = &cfg->codec.h264;
+
+    hw_cfg->frame_num = 0;
+    if (ctx->frame_cnt > 0) {
+        hw_cfg->qp = mpp_data_avg(ctx->qp_p, -1, 1, 1);
+        hw_cfg->qp += intraQpDelta;
+    }
+    /*
+     * Previous frame is inter then intra frame can not
+     * have a big qp step between these two frames
+     */
+    if (hw_cfg->pre_frame_type  == H264E_VPU_FRAME_P)
+        hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_prev - 4,
+                              42);
+    else
+        hw_cfg->qp = find_best_qp(ctx->intra_qs, codec, hw_cfg->qp_prev,
+                                  rc_syn->bit_target);
+}
+
+void h264e_vpu_rc_calPfrmqp(H264eHalContext *ctx, H264eHwCfg *hw_cfg)
+{
+    RK_S32 ratio, ratio2;
+    RK_S32 PrePicBits = hw_cfg->pre_pic_bits;
+    RK_S32 PreMeanQp =  mpp_data_avg(ctx->qp_p, -1, 1, 1);
+
+    if (100 * PrePicBits < 105 * hw_cfg->pre_target_bit) {
+        if (100 * PrePicBits > 90 * hw_cfg->pre_target_bit) {
+            hw_cfg->qp = hw_cfg->qp_prev;
+        } else {
+            ratio = (hw_cfg->pre_target_bit - PrePicBits) * 100 / hw_cfg->pre_target_bit;
+            if (ratio >= 40) {
+                hw_cfg->qp  = hw_cfg->qp_prev - 3;
+            } else if ((ratio > 20) && (ratio < 40)) {
+                hw_cfg->qp  = hw_cfg->qp_prev - 2;
+            } else {
+                hw_cfg->qp  = hw_cfg->qp_prev - 1;
+            }
+            hw_cfg->qp  = MPP_MIN(PreMeanQp, hw_cfg->qp);
+        }
+    } else {
+        ratio2 = (PrePicBits - hw_cfg->pre_target_bit) * 100 / hw_cfg->pre_target_bit;
+        ratio2 = MPP_MIN(ratio2, 200);
+        hw_cfg->qp = hw_cfg->qp_prev + (ratio2 * 5) / 100 + 1;
+        hw_cfg->qp = MPP_MIN(hw_cfg->qp, 51);
+    }
+
+    if ((PreMeanQp - hw_cfg->qp_prev) > 5) {
+        hw_cfg->qp = hw_cfg->qp + 1;
+    }
+}
+
+void h264e_vpu_tsvc_rc_calqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
+{
+    H264eHalTsvcRc *svc_rc = &ctx->tsvc_rc;
+    svc_rc->uiTemporalId = svc_rc->iTlOfFrames[svc_rc->iFrameCodedInVGop];
+    if (rc_syn->type == INTRA_FRAME) {
+        svc_rc->iFrameCodedInVGop = 0;
+        hw_cfg->frame_type = H264E_VPU_FRAME_I;
+        h264e_vpu_rc_calIfrmqp(ctx, rc_syn, hw_cfg);
+    } else {
+        RK_S32 iLastIdxCodecInVGop, iTlLast, iDeltaQpTemporal;
+        hw_cfg->frame_type = H264E_VPU_FRAME_P;
+        if (svc_rc->uiTemporalId == 0) {
+            if (svc_rc->iGopIndexInVGop == svc_rc->iGopNumberInVGop) {
+                svc_rc->iGopIndexInVGop = 0;
+                svc_rc->iFrameCodedInVGop = 0;
+            }
+            svc_rc->iGopIndexInVGop++;
+        }
+        h264e_vpu_rc_calPfrmqp(ctx, hw_cfg);
+        iLastIdxCodecInVGop = svc_rc->iFrameCodedInVGop - 1;
+        if (iLastIdxCodecInVGop < 0)
+            iLastIdxCodecInVGop += VGOP_SIZE;
+        iTlLast = svc_rc->iTlOfFrames[iLastIdxCodecInVGop];
+        iDeltaQpTemporal = svc_rc->uiTemporalId - iTlLast;
+        if (0 == iTlLast && svc_rc->uiTemporalId > 0)
+            iDeltaQpTemporal += 3;
+        else if (0 == svc_rc->uiTemporalId && iTlLast > 0)
+            iDeltaQpTemporal -= 3;
+        hw_cfg->qp += iDeltaQpTemporal;
+        if (svc_rc->iQp[svc_rc->iFrameCodedInVGop] > 0)
+            hw_cfg->qp = (hw_cfg->qp + svc_rc->iQp[svc_rc->iFrameCodedInVGop]) >> 1;
+    }
+    mpp_log("tsvc temporalid %d targetbit %d config qp %d", svc_rc->uiTemporalId, rc_syn->bit_target, hw_cfg->qp);
+}
+
 MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
 {
     const RK_S32 sscale = 256;
@@ -79,7 +169,6 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
     RK_S32 tmp, nonZeroTarget;
     MppEncCfgSet *cfg = ctx->cfg;
     MppEncH264Cfg *codec = &cfg->codec.h264;
-    int intraQpDelta = 3;
     MppEncRcCfg *rc = &cfg->rc;
     RK_S32 mbPerPic = (hw_cfg->width + 15) / 16 * (hw_cfg->height + 15) / 16;
     RK_S32 coeffCntMax = mbPerPic * 24 * 16;
@@ -131,49 +220,22 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
         }
     }
     /* frame type and rate control setup */
-    {
+    if (ctx->tsvc_rc.tlayer_num > 1) {
+        h264e_vpu_tsvc_rc_calqp(ctx, rc_syn, hw_cfg);
+    } else {
         hw_cfg->pre_frame_type = hw_cfg->frame_type;
         if (rc_syn->type == INTRA_FRAME) {
             hw_cfg->frame_type = H264E_VPU_FRAME_I;
-            hw_cfg->frame_num = 0;
-            if (ctx->frame_cnt > 0) {
-                hw_cfg->qp = mpp_data_avg(ctx->qp_p, -1, 1, 1);
-                hw_cfg->qp += intraQpDelta;
-            }
-            /*
-             * Previous frame is inter then intra frame can not
-             * have a big qp step between these two frames
-             */
-            if (hw_cfg->pre_frame_type  == H264E_VPU_FRAME_P)
-                hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_prev - 4,
-                                      hw_cfg->qp_prev + 4);
-            else
-                hw_cfg->qp = find_best_qp(ctx->intra_qs, codec, hw_cfg->qp_prev,
-                                          rc_syn->bit_target);
+            h264e_vpu_rc_calIfrmqp(ctx, rc_syn, hw_cfg);
+            hw_cfg->qp_min = 22;
+            hw_cfg->qp_max = 45;
+            hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_min, hw_cfg->qp_max);
         } else {
             hw_cfg->frame_type = H264E_VPU_FRAME_P;
-
-            hw_cfg->qp = find_best_qp(ctx->inter_qs, codec, hw_cfg->qp_prev,
-                                      rc_syn->bit_target);
-
-            if (hw_cfg->pre_frame_type == H264E_VPU_FRAME_I)
-                hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_prev - 4,
-                                      hw_cfg->qp_prev + 4);
-            else {
-                if (hw_cfg->pre_bit_diff < 0 && hw_cfg->qp >= hw_cfg->qp_prev) {
-                    hw_cfg->pre_bit_diff = abs(hw_cfg->pre_bit_diff);
-                    if (hw_cfg->pre_bit_diff <=  rc_syn->bit_target * 1 / 5) {
-                        hw_cfg->qp = hw_cfg->qp_prev;
-                    } else if (hw_cfg->pre_bit_diff >  rc_syn->bit_target * 1 / 5)
-                        hw_cfg->qp  = hw_cfg->qp_prev - 1;
-                    else if (hw_cfg->pre_bit_diff >  rc_syn->bit_target * 2 / 3)
-                        hw_cfg->qp  = hw_cfg->qp_prev - 2;
-                    else
-                        hw_cfg->qp  = hw_cfg->qp_prev - 3;
-                }
-            }
+            h264e_vpu_rc_calPfrmqp(ctx, hw_cfg);
         }
     }
+
     hw_cfg->qp = mpp_clip(hw_cfg->qp,
                           hw_cfg->qp_prev - codec->qp_max_step,
                           hw_cfg->qp_prev + codec->qp_max_step);
@@ -357,9 +419,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         hw_cfg->inter4x4_disabled = (codec->profile >= 31) ? (1) : (0);
         hw_cfg->cabac_init_idc = codec->cabac_init_idc;
         hw_cfg->qp = codec->qp_init;
-
         hw_cfg->qp_prev = hw_cfg->qp;
-
         codec->change = 0;
     }
     if (NULL == ctx->intra_qs)
@@ -371,10 +431,11 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         mpp_linreg_init(&ctx->mad, 5, 1);
 
     if (NULL == ctx->qp_p)
-        mpp_data_init(&ctx->qp_p, MPP_MIN(rc->gop, 10));
+        mpp_data_init(&ctx->qp_p, MPP_MIN(rc->gop, 6));
 
     mpp_assert(ctx->intra_qs);
     mpp_assert(ctx->inter_qs);
+
     if (rc_syn->type == INTRA_FRAME) {
         hw_cfg->frame_type = H264E_VPU_FRAME_I;
         hw_cfg->frame_num = 0;
@@ -403,8 +464,8 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
     case MPP_FMT_YUV420SP: {
         RK_U32 offset_uv = hw_cfg->hor_stride * hw_cfg->ver_stride;
 
-        mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
-        mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
+        // mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
+        // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
 
         hw_cfg->input_cb_addr = hw_cfg->input_luma_addr + (offset_uv << 10);
         hw_cfg->input_cr_addr = 0;
@@ -414,7 +475,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         RK_U32 offset_y = hw_cfg->hor_stride * hw_cfg->ver_stride;
 
         mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
-        mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
+        // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
 
         hw_cfg->input_cb_addr = hw_cfg->input_luma_addr + (offset_y << 10);
         hw_cfg->input_cr_addr = hw_cfg->input_cb_addr + (offset_y << 8);
@@ -444,3 +505,131 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
     ctx->idr_pic_id = !ctx->idr_pic_id;
     return MPP_OK;
 }
+
+
+void h264e_vpu_update_result(H264eHwCfg *hw_cfg, RK_S32 pic_bits, RK_S32 target_bits)
+{
+    hw_cfg->pre_bit_diff = pic_bits - target_bits;
+    hw_cfg->pre_pic_bits = pic_bits;
+    hw_cfg->pre_target_bit = target_bits;
+}
+
+void h264e_vpu_tsvcrc_update(H264eHalTsvcRc *tsvc_rc, RK_S32 pic_bits,  RK_S32 avg_qp)
+{
+    tsvc_rc->iQp[tsvc_rc->iFrameCodedInVGop] = avg_qp;
+    tsvc_rc->iFrameBits[tsvc_rc->iFrameCodedInVGop] = pic_bits;
+    tsvc_rc->iFrameCodedInVGop++;
+    if (tsvc_rc->iFrameCodedInVGop >= VGOP_SIZE) {
+        tsvc_rc->iFrameCodedInVGop = 0;
+    }
+}
+
+void h264e_vpu_tsvc_rc_init(H264eHalTsvcRc *svc_rc, RK_S32 max_layer_id)
+{
+
+    RK_S32 kiGopSize;
+    RK_S32 i, n, k;
+    kiGopSize = (1 << max_layer_id);
+    svc_rc->iGopNumberInVGop = VGOP_SIZE / kiGopSize;
+    svc_rc->iGopIndexInVGop = 0;
+    svc_rc->iFrameCodedInVGop = 0;
+    for (n = 0; n < VGOP_SIZE; n += kiGopSize) {
+        svc_rc->iTlOfFrames[n] = 0;
+        for (i = 1; i <= max_layer_id; i++) {
+            for (k = 1 << (max_layer_id - i); k < kiGopSize; k += (kiGopSize >> (i - 1))) {
+                svc_rc->iTlOfFrames[k + n] = i;
+            }
+        }
+    }
+    svc_rc->tlayer_num = max_layer_id + 1;
+}
+
+void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
+                          MPP_RET (*send)(void* hal, RK_U32 *reg, RK_S32 d_qp),
+                          MPP_RET (*feedback)(h264e_feedback* fb, void * reg))
+{
+    H264eHalContext *ctx = (H264eHalContext *)hal;
+    h264e_feedback *fb = &ctx->feedback;
+    RcSyntax *rc_syn = (RcSyntax *)task->enc.syntax.data;
+    H264eHwCfg *hw_cfg = &ctx->hw_cfg;
+    MppEncPrepCfg *prep = &ctx->set->prep;
+    RK_S32 ratio = 0;
+    RK_S32 pic_bits;
+    RK_S32 num_mb = (MPP_ALIGN(prep->width, 16) * MPP_ALIGN(prep->height, 16)) >> 8;
+    H264eHalTsvcRc *tsvc_rc = &ctx->tsvc_rc;
+    if (tsvc_rc->tlayer_num > 1) {
+        int dealt_qp = 0;
+        int flag = 1;
+        int cnt = 1;
+        int re_qp = hw_cfg->qp;
+        do {
+            pic_bits =  fb->out_strm_size * 8;
+            mpp_log("pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
+            if (abs(pic_bits - rc_syn->bit_target) >= rc_syn->bit_target * 20 / 100) {
+                ratio = (pic_bits - rc_syn->bit_target) * 100 / rc_syn->bit_target;
+                ratio = MPP_MIN(ratio, 200);
+                if (rc_syn->type == INTRA_FRAME) {
+                    dealt_qp = (ratio * 6) / 100 + 1;
+                } else {
+                    if (cnt == 0) {
+                        if (!flag && ratio > 0) {
+                            dealt_qp = (dealt_qp >> 1);
+                            hw_cfg->qp = re_qp;
+                        } else {
+                            dealt_qp = 0;
+                        }
+
+                    } else {
+                        if (ratio < 0) {
+                            flag = 0;
+                        }
+                        if (tsvc_rc->uiTemporalId <= 4) {
+                            ratio = MPP_MIN(ratio, 200);
+                            dealt_qp = (ratio * 3) / 100 + flag;
+                        }
+                    }
+                }
+                if (dealt_qp != 0) {
+                    mpp_log("reencode dealt_qp %d", dealt_qp);
+                    send(hal, (RK_U32 *)reg_out, dealt_qp);
+                    feedback(fb, reg_out);
+                    task->enc.length = fb->out_strm_size;
+                    hw_cfg->qp_prev = fb->qp_sum / num_mb;
+                    if ((cnt-- <= 0) || (hw_cfg->qp == hw_cfg->qp_max)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        } while (1);
+    } else {
+        if (rc_syn->type == INTER_P_FRAME) {
+            int dealt_qp = 3;
+            int cnt = 2;
+            do {
+                if (hw_cfg->qp < 30) {
+                    dealt_qp = 5;
+                } else if (hw_cfg->qp < 42) {
+                    dealt_qp = 3;
+                } else {
+                    dealt_qp = 2;
+                }
+                if ((fb->out_strm_size * 8 >  (RK_U32)rc_syn->bit_target * 3) && (hw_cfg->qp < hw_cfg->qp_max)) {
+                    send(hal, (RK_U32 *)reg_out, dealt_qp);
+                    feedback(fb, reg_out);
+                    task->enc.length = fb->out_strm_size;
+                    hw_cfg->qp_prev = fb->qp_sum / num_mb;
+                    if ((cnt-- <= 0) || (hw_cfg->qp == hw_cfg->qp_max)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } while (1);
+        }
+    }
+}
+

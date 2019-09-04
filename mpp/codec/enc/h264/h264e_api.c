@@ -50,7 +50,7 @@ typedef struct {
     RK_U32          rc_ready;
     RK_U32          prep_ready;
     MppRateControl  *rc;
-
+    MppRcFunc       pfRc;
     /* output to hal */
     RcSyntax        syntax;
 
@@ -115,7 +115,7 @@ MPP_RET h264e_init(void *ctx, EncImplCfg *ctrl_cfg)
     p->idr_request = 0;
 
     ret = mpp_rc_init(&p->rc);
-
+    mpp_rc_init_func(0, &p->pfRc);
     INIT_LIST_HEAD(&p->rc_list);
 
     mpp_env_get_u32("h264e_debug", &h264e_debug, 0);
@@ -160,11 +160,14 @@ MPP_RET h264e_encode(void *ctx, HalEncTask *task)
         return MPP_NOK;
     }
 
-    mpp_rc_update_user_cfg(p->rc, rc, !!p->idr_request);
+    if (mpp_rc_update_user_cfg(p->rc, rc, !!p->idr_request) != MPP_OK) {
+        task->valid = 0;
+        return MPP_OK;
+    }
+
     if (p->idr_request)
         p->idr_request--;
-
-    mpp_rc_bits_allocation(p->rc, rc_syn);
+    p->pfRc.rc_alloc_bits(p->rc, rc_syn);
     if (rc_syn->bit_target <= 0) {
         int mb_width = ((cfg->prep.width + 15) & (~15)) >> 4;
         int mb_height = ((cfg->prep.height + 15) & (~15)) >> 4;
@@ -238,6 +241,27 @@ MPP_RET h264e_config(void *ctx, RK_S32 cmd, void *param)
         } else
             mpp_err_f("failed to accept new rc config\n");
     } break;
+    case MPP_ENC_SET_GOPREF : {
+        MppEncGopRef *ref = (MppEncGopRef *)param;
+        MppEncRcCfg *rc = &p->cfg->rc;
+        RK_U32 i = 0;
+        RK_S32 max_temporal_id = 0;
+        for (i = 0; i < ref->ref_gop_len + 1; i++) {
+            if (max_temporal_id < ref->gop_info[i].temporal_id) {
+                max_temporal_id = ref->gop_info[i].temporal_id;
+            }
+        }
+        rc->tlayer_num = max_temporal_id + 1;
+        for (i = 0; i <= (RK_U32)max_temporal_id; i++) {
+            rc->tlayer_weight[i] = ref->tlayer_weight[i];
+        }
+        if (rc->tlayer_num > 1) {
+            mpp_rc_init_func(1, &p->pfRc);
+        }
+        mpp_log("SET_RC_HIER_REF rc->tlayer_num %d", rc->tlayer_num);
+        rc->change |= MPP_ENC_RC_CFG_CHANGE_TSVC;
+    } break;
+
     default:
         mpp_err("No correspond cmd found, and can not config!");
         ret = MPP_NOK;
@@ -255,7 +279,7 @@ MPP_RET h264e_callback(void *ctx, void *feedback)
     h264e_feedback *fb  = (h264e_feedback *)feedback;
 
     p->result = *fb->result;
-    mpp_rc_update_hw_result(p->rc, fb->result);
+    p->pfRc.rc_update_result(p->rc, fb->result);
     mpp_rc_calc_real_bps(&p->rc_list, p->rc, fb->result->bits);
 
     return MPP_OK;

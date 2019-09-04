@@ -22,6 +22,15 @@
 #include "mpp_log.h"
 #include "mpp_list.h"
 
+#define IDR_BITRATE_RATIO 4
+
+typedef enum MPP_BIT_STATUS_S {
+    BITS_NORMAL,
+    BITS_LIMITED,
+    BITS_EXCEEDED
+} MPP_BIT_STATUS;
+
+
 /*
  * mpp rate control contain common caculation methd
  *
@@ -140,8 +149,49 @@ typedef enum RC_PARAM_OPS {
     RC_RECORD_WIN_LEN
 } RC_PARAM_OPS;
 
+
+typedef struct MppRCTemporal_s {
+    RK_S32   iMinBitsTl;
+    RK_S32   iMaxBitsTl;
+    RK_S32   iTlayerWeight;
+    RK_S32   iGopBitsDq;
+    RK_S64   iTotalBits;
+//P frame level R-Q Model
+    RK_S64   iLinearCmplx; // *INT_MULTIPLY
+    RK_S32   iPFrameNum;
+    RK_S32   iFrameCmplxMean;
+    RK_S32   iLastBitsRemain;
+} MppRcTemporal;
+
+
+
+typedef struct MppTsvcRateControl_s {
+    MppRcTemporal *temporal_over_rc;
+    RK_S32   iBitsPerFrame;
+// bits allocation and status
+    RK_S32   iRemainingBits;
+    RK_S32   iTargetBits;
+    RK_S32   iCurrentBitsLevel;//0:normal; 1:limited; 2:exceeded.
+
+    RK_U8    iTlOfFrames[VGOP_SIZE];
+    RK_S32   iLastDiffBit[VGOP_SIZE];
+    RK_S32   iRemainingWeights;
+    RK_S32   iFrameDqBits;
+    RK_S32   iFrameCodedInVGop;
+    RK_S32   iAverageFrameQp;
+    RK_S32   iPreviousGopSize;
+    RK_S32   iGopNumberInVGop;
+    RK_S32   iGopIndexInVGop;
+    RK_S32   tlayer_num;
+    RK_S32   bEnableFrameSkip;
+    RK_S32   uiTemporalId;
+    RK_S32   iframe_num;
+} MppTsvcRateControl;
+
+
 typedef struct MppRateControl_s {
     /* control parameter from external config */
+    RK_S32 fps_in;
     RK_S32 fps_num;
     RK_S32 fps_denom;
     RK_S32 fps_out;
@@ -222,6 +272,14 @@ typedef struct MppRateControl_s {
     RK_S32 prev_aq_prop_offset;
     RK_S32 quality;
 
+    /*
+     * frame rate control
+    */
+    RK_U32 frm_num;
+    RK_U32 next_num;
+
+    //tsvc rate control
+    MppTsvcRateControl tsvc_rc;
 } MppRateControl;
 
 /*
@@ -285,6 +343,15 @@ typedef struct RecordNode_t {
     RK_S32           wlen;
 } RecordNode;
 
+typedef MPP_RET (*mpp_rc_alloc_bits) (MppRateControl *ctx, RcSyntax *rc_syn);
+typedef MPP_RET (*mpp_rc_update_result)(MppRateControl *ctx, RcHalResult *result);
+
+typedef  struct  MppRcFunc_s {
+    mpp_rc_alloc_bits  rc_alloc_bits;
+    mpp_rc_update_result  rc_update_result;
+} MppRcFunc;
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -309,6 +376,7 @@ MPP_RET mpp_rc_deinit(MppRateControl *ctx);
  */
 MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 force_idr);
 
+#if 0
 /*
  * When one frame is encoded hal will call this function to update paramter
  * from hardware. Hardware will update bits / qp_sum / mad or sse data
@@ -316,6 +384,7 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
  * Then rate control will update the linear regression model
  */
 MPP_RET mpp_rc_update_hw_result(MppRateControl *ctx, RcHalResult *result);
+
 
 /*
  * Use bps/fps config generate bit allocation setting
@@ -328,6 +397,11 @@ MPP_RET mpp_rc_update_hw_result(MppRateControl *ctx, RcHalResult *result);
  * bits[1] - max
  */
 MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn);
+#endif
+
+MPP_RET mpp_rc_init_func(int mode, MppRcFunc *pfun);
+RK_S32 mpp_rc_framerate_control (MppRateControl *ctx);
+
 
 MPP_RET mpp_rc_record_param(struct list_head *head, MppRateControl *ctx,
                             RcSyntax *rc_syn);

@@ -32,6 +32,8 @@ typedef struct VepuQpCtrl_s {
     RK_S32 frameBitCnt;
 } VepuQpCtrl;
 
+
+
 /*
  * Overall configuration required by hardware
  * Currently support vepu and rkvenc
@@ -90,9 +92,13 @@ typedef struct H264eHwCfg_t {
     RK_S32 qp;
     RK_S32 qp_min;
     RK_S32 qp_max;
+    RK_S32 pre_bit_diff;
+    RK_S32 pre_target_bit;
+    RK_S32 pre_pic_bits;
+
     RK_S32 mad_qp_delta;
     RK_S32 mad_threshold;
-    RK_S32 pre_bit_diff;
+
 
     /*
      * VEPU MB rate control parameter

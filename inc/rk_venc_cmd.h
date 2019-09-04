@@ -159,6 +159,7 @@ typedef enum MppEncRcCfgChange_e {
     MPP_ENC_RC_CFG_CHANGE_FPS_OUT       = (1 << 6),     /* change on fps out flex / numerator / denorminator */
     MPP_ENC_RC_CFG_CHANGE_GOP           = (1 << 7),
     MPP_ENC_RC_CFG_CHANGE_SKIP_CNT      = (1 << 8),
+    MPP_ENC_RC_CFG_CHANGE_TSVC          = (1 << 9),
     MPP_ENC_RC_CFG_CHANGE_ALL           = (0xFFFFFFFF),
 } MppEncRcCfgChange;
 
@@ -178,6 +179,9 @@ typedef enum MppEncRcQuality_t {
     MPP_ENC_RC_QUALITY_AQ_ONLY,
     MPP_ENC_RC_QUALITY_BUTT
 } MppEncRcQuality;
+
+#define MAX_TEMPORAL_LAYER 4
+#define VGOP_SIZE 8
 
 typedef struct MppEncRcCfg_t {
     RK_U32  change;
@@ -273,6 +277,9 @@ typedef struct MppEncRcCfg_t {
      * 0 - frame skip is not allow
      */
     RK_S32  skip_cnt;
+
+    RK_S32  tlayer_num;
+    RK_S32  tlayer_weight[MAX_TEMPORAL_LAYER];
 } MppEncRcCfg;
 
 /*
@@ -637,6 +644,8 @@ typedef struct MppEncH264Cfg_t {
     RK_S32              qp_max;
     RK_S32              qp_min;
     RK_S32              qp_max_step;
+    RK_S32              Iqp_max;
+    RK_S32              Iqp_min;
 
     /*
      * intra fresh config
@@ -900,6 +909,7 @@ typedef struct MppEncGopRef_t {
     // Rockchip gop mode setup
     RK_U32 ref_gop_len;
     MppGopRefInfo gop_info[GOP_REF_SIZE];
+    RK_U32 tlayer_weight[MAX_TEMPORAL_LAYER];
 } MppEncGopRef;
 
 /**

@@ -86,6 +86,8 @@ typedef struct MppEncHierCfg_t {
     RK_S32  length;
     RK_S32  ref_idx[MAX_GOP_FMT_CNT];
     char    ref_fmt[MAX_GOP_FMT_BUF_SIZE];
+    char    t_layer_num;
+    char    t_layer_Weight[MAX_GOP_FMT_SIZE];
 } MppEncHierCfg;
 
 typedef struct MppEncFrmStatus_t {

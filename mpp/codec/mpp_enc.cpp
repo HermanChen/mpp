@@ -731,6 +731,7 @@ MPP_RET mpp_enc_control(MppEnc ctx, MpiCmd cmd, void *param)
         enc_dbg_ctrl("idr request\n");
         ret = enc_impl_proc_cfg(enc->impl, MPP_ENC_SET_IDR_FRAME, NULL);
         enc_dbg_ctrl("set gop ref\n");
+        ret = enc_impl_proc_cfg(enc->impl, cmd, param);
         ret = mpp_hal_control(enc->hal, cmd, param);
     } break;
     default : {

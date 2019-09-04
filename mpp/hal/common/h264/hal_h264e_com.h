@@ -363,6 +363,19 @@ typedef struct H264eRefParam_t {
                                         * Useful in combination with interactive error resilience. */
 } H264eRefParam;
 
+
+typedef struct H264eHalTsvcRc_s {
+    RK_U8    iTlOfFrames[VGOP_SIZE];
+    RK_S32   iQp[VGOP_SIZE];
+    RK_S32   iFrameBits[VGOP_SIZE];
+    RK_S32   iFrameCodedInVGop;
+    RK_S32   ilastScaleQp;
+    RK_S32   iGopNumberInVGop;
+    RK_S32   iGopIndexInVGop;
+    RK_S32   tlayer_num;
+    RK_S32   uiTemporalId;
+} H264eHalTsvcRc;
+
 typedef struct H264eHalParam_t {
     RK_S32 hw_type; // 0:rkv, 1:vpu
     RK_S32 constrained_intra;
@@ -438,6 +451,9 @@ typedef struct H264eHalContext_t {
     RK_U32                          qp_scale; /* can be 1 or 2 */
 
     H264eHwCfg                      hw_cfg;
+
+//   Rc_Info                         rc_infos[MAX_TEMPORAL_LAYER];
+
     MppLinReg                       *inter_qs;
     MppLinReg                       *intra_qs;
     MppLinReg                       *mad;
@@ -449,6 +465,8 @@ typedef struct H264eHalContext_t {
     RK_S32                          svc;
     RK_S32                          usr_hier;
     MppEncHierCfg                   hier_cfg;
+
+    H264eHalTsvcRc                  tsvc_rc;
 
     H264eSlice                      slice;
     H264eDpb                        *dpb;
