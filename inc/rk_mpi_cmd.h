@@ -53,6 +53,8 @@
 #define CMD_ENC_CFG_GOPREF              (0x00008200)
 #define CMD_ENC_CFG_ROI                 (0x00008300)
 #define CMD_ENC_CFG_OSD                 (0x00008400)
+#define CMD_ENC_CFG_RC_HIER              (0x00008500)
+
 
 typedef enum {
     MPP_OSAL_CMD_BASE                   = CMD_MODULE_OSAL,
@@ -147,7 +149,7 @@ typedef enum {
 
     MPP_ENC_CFG_GOPREF                  = CMD_MODULE_CODEC | CMD_CTX_ID_ENC | CMD_ENC_CFG_GOPREF,
     MPP_ENC_SET_GOPREF,                 /* set MppEncGopRef structure */
-
+    MPP_ENC_SET_RC_HIER,
     MPP_ENC_CMD_END,
 
     MPP_ISP_CMD_BASE                    = CMD_MODULE_CODEC | CMD_CTX_ID_ISP,

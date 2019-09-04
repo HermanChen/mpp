@@ -43,6 +43,10 @@ typedef struct {
     RK_U32          debug;
     RK_U32          num_frames;
     RK_S32          gop_mode;
+    RK_U32          hor_stride;
+    RK_U32          ver_stride;
+    RK_U32          bit_rate;
+    RK_U32          out_rate;
 
     RK_U32          have_input;
     RK_U32          have_output;
@@ -87,6 +91,7 @@ typedef struct {
     // rate control runtime parameter
     RK_S32 gop;
     RK_S32 fps;
+    RK_S32 fps_out;
     RK_S32 bps;
 
     // gop reference config
@@ -108,6 +113,8 @@ static OptionInfo mpi_enc_cmd[] = {
     {"t",               "type",                 "output stream coding type"},
     {"n",               "max frame number",     "max encoding frame number"},
     {"g",               "gop_mode",             "gop reference mode"},
+    {"b",               "target bps",           "set tareget bps"},
+    {"r",               "out frame rate",       "set output frame rate"},
     {"d",               "debug",                "debug flag"},
 };
 
@@ -131,14 +138,23 @@ MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
     // get paramter from cmd
     p->width        = cmd->width;
     p->height       = cmd->height;
-    p->hor_stride   = MPP_ALIGN(cmd->width, 16);
-    p->ver_stride   = MPP_ALIGN(cmd->height, 16);
+    if (cmd->hor_stride != 0)
+        p->hor_stride = cmd->hor_stride;
+    else
+        p->hor_stride   = MPP_ALIGN(cmd->width, 8);
+    if (cmd->ver_stride != 0)
+        p->hor_stride = cmd->hor_stride;
+    else
+        p->ver_stride   =  cmd->height;//MPP_ALIGN(cmd->height, 16);
+
     p->fmt          = cmd->format;
     p->type         = cmd->type;
+    p->bps          = cmd->bit_rate;
+    p->fps_out      = cmd->out_rate;
     if (cmd->type == MPP_VIDEO_CodingMJPEG)
         cmd->num_frames = 1;
     p->num_frames   = cmd->num_frames;
-    p->gop_mode     = cmd->gop_mode;
+    p->gop_mode     =  0 ;//cmd->gop_mode;
 
     if (cmd->have_input) {
         p->fp_input = fopen(cmd->file_input, "rb");
@@ -158,13 +174,13 @@ MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
 
     // update resource parameter
     if (p->fmt <= MPP_FMT_YUV420SP_VU)
-        p->frame_size = p->hor_stride * p->ver_stride * 3 / 2;
+        p->frame_size = MPP_ALIGN(cmd->width, 16) * MPP_ALIGN(cmd->height, 16) * 3 / 2;
     else if (p->fmt <= MPP_FMT_YUV422_UYVY) {
         // NOTE: yuyv and uyvy need to double stride
         p->hor_stride *= 2;
-        p->frame_size = p->hor_stride * p->ver_stride;
+        p->frame_size = 2 * MPP_ALIGN(cmd->width, 16) * MPP_ALIGN(cmd->height, 16);
     } else
-        p->frame_size = p->hor_stride * p->ver_stride * 4;
+        p->frame_size = MPP_ALIGN(cmd->width, 16) * MPP_ALIGN(cmd->height, 16) * 4;
     p->packet_size  = p->width * p->height;
 
 RET:
@@ -219,7 +235,8 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
     /* setup default parameter */
     p->fps = 30;
     p->gop = 600;
-    p->bps = p->width * p->height / 8 * p->fps;
+    if (!p->bps)
+        p->bps = p->width * p->height / 8 * p->fps;
 
     prep_cfg->change        = MPP_ENC_PREP_CFG_CHANGE_INPUT |
                               MPP_ENC_PREP_CFG_CHANGE_ROTATION |
@@ -258,13 +275,15 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             rc_cfg->bps_min      = p->bps * 1 / 16;
         }
     }
-
+    if (p->fps_out <= 0 || p->fps_out > p->fps) {
+        p->fps_out = p->fps;
+    }
     /* fix input / output frame rate */
     rc_cfg->fps_in_flex      = 0;
     rc_cfg->fps_in_num       = p->fps;
     rc_cfg->fps_in_denorm    = 1;
     rc_cfg->fps_out_flex     = 0;
-    rc_cfg->fps_out_num      = p->fps;
+    rc_cfg->fps_out_num      = p->fps_out;
     rc_cfg->fps_out_denorm   = 1;
 
     rc_cfg->gop              = p->gop;
@@ -283,6 +302,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
     case MPP_VIDEO_CodingAVC : {
         codec_cfg->h264.change = MPP_ENC_H264_CFG_CHANGE_PROFILE |
                                  MPP_ENC_H264_CFG_CHANGE_ENTROPY |
+                                 MPP_ENC_H264_CFG_CHANGE_QP_LIMIT |
                                  MPP_ENC_H264_CFG_CHANGE_TRANS_8x8;
         codec_cfg->h264.svc = 1;
         /*
@@ -301,9 +321,13 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
          * 50 / 51 / 52         - 4K@30fps
          */
         codec_cfg->h264.level    = 40;
+
+        codec_cfg->h264.qp_init =  0;
+        codec_cfg->h264.qp_max   = 48;
+        codec_cfg->h264.qp_min   = 4;
+        codec_cfg->h264.qp_max_step  = 16;
         codec_cfg->h264.entropy_coding_mode  = 1;
         codec_cfg->h264.cabac_init_idc  = 0;
-        codec_cfg->h264.transform8x8_mode = 1;
     } break;
     case MPP_VIDEO_CodingMJPEG : {
         codec_cfg->jpeg.change  = MPP_ENC_JPEG_CFG_CHANGE_QP;
@@ -362,6 +386,10 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             // ///
             // P0 ------------------------------------------------> P8
             ref->ref_gop_len    = 8;
+            ref->tlayer_weight[0] = 800;
+            ref->tlayer_weight[1] = 400;
+            ref->tlayer_weight[2] = 400;
+            ref->tlayer_weight[3] = 400;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -426,6 +454,10 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             //  //
             // P0/---------------------> P4
             ref->ref_gop_len    = 4;
+            ref->tlayer_weight[0] = 1000;
+            ref->tlayer_weight[1] = 500;
+            ref->tlayer_weight[2] = 500;
+            ref->tlayer_weight[3] = 0;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -466,6 +498,10 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             //  /
             // P0--------> P2
             ref->ref_gop_len    = 2;
+            ref->tlayer_weight[0] = 1400;
+            ref->tlayer_weight[1] = 600;
+            ref->tlayer_weight[2] = 0;
+            ref->tlayer_weight[3] = 0;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -892,6 +928,22 @@ static RK_S32 mpi_enc_test_parse_options(int argc, char **argv, MpiEncTestCmd* c
                     cmd->gop_mode = atoi(next);
                 } else {
                     mpp_err("invalid gop mode\n");
+                    goto PARSE_OPINIONS_OUT;
+                }
+                break;
+            case 'b':
+                if (next) {
+                    cmd->bit_rate = atoi(next);
+                } else {
+                    mpp_err("invalid bit rate\n");
+                    goto PARSE_OPINIONS_OUT;
+                }
+                break;
+            case 'r':
+                if (next) {
+                    cmd->out_rate = atoi(next);
+                } else {
+                    mpp_err("invalid out rate\n");
                     goto PARSE_OPINIONS_OUT;
                 }
                 break;

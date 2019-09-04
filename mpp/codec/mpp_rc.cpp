@@ -27,6 +27,8 @@
 #define MPP_RC_DBG_FUNCTION          (0x00000001)
 #define MPP_RC_DBG_BPS               (0x00000010)
 #define MPP_RC_DBG_RC                (0x00000020)
+#define MPP_RC_DBG_TSVCRC            (0x00000040)
+
 #define MPP_RC_DBG_CFG               (0x00000100)
 #define MPP_RC_DBG_RECORD            (0x00001000)
 #define MPP_RC_DBG_VBV               (0x00002000)
@@ -38,6 +40,8 @@
 #define mpp_rc_dbg_func(fmt, ...)    mpp_rc_dbg_f(MPP_RC_DBG_FUNCTION, fmt, ## __VA_ARGS__)
 #define mpp_rc_dbg_bps(fmt, ...)     mpp_rc_dbg(MPP_RC_DBG_BPS, fmt, ## __VA_ARGS__)
 #define mpp_rc_dbg_rc(fmt, ...)      mpp_rc_dbg(MPP_RC_DBG_RC, fmt, ## __VA_ARGS__)
+#define mpp_rc_dbg_tsvcrc(fmt, ...)  mpp_rc_dbg(MPP_RC_DBG_TSVCRC, fmt, ## __VA_ARGS__)
+
 #define mpp_rc_dbg_cfg(fmt, ...)     mpp_rc_dbg(MPP_RC_DBG_CFG, fmt, ## __VA_ARGS__)
 #define mpp_rc_dbg_vbv(fmt, ...)     mpp_rc_dbg(MPP_RC_DBG_VBV, fmt, ## __VA_ARGS__)
 
@@ -208,6 +212,25 @@ MPP_RET mpp_rc_init(MppRateControl **ctx)
     return ret;
 }
 
+RK_S32 mpp_rc_framerate_control (MppRateControl *ctx)
+{
+    if (ctx->fps_in == ctx->fps_out) {
+        return 0;
+    }
+    int rate = ctx->fps_in / ctx->fps_out;
+    if (rate <= 1) {
+        return 0;
+    }
+    ctx->frm_num++;
+    if (ctx->frm_num < ctx->next_num) {
+        mpp_log("skip current frame");
+        return -1;
+    }
+    ctx->next_num += rate;
+    return 0;
+}
+
+
 
 RK_S32 mpp_rc_vbv_check(MppVirtualBuffer *vb, RK_S32 timeInc, RK_S32 hrd)
 {
@@ -360,10 +383,33 @@ MPP_RET mpp_rc_deinit(MppRateControl *ctx)
         mpp_data_deinit(ctx->intra_percent);
         ctx->intra_percent = NULL;
     }
-
+    if (ctx->tsvc_rc.temporal_over_rc != NULL) {
+        mpp_free(ctx->tsvc_rc.temporal_over_rc);
+        ctx->tsvc_rc.temporal_over_rc = NULL;
+    }
     mpp_free(ctx);
     return MPP_OK;
 }
+
+
+#define WEIGHT_MULTIPLY 2000
+void mpp_rc_init_vgop (MppTsvcRateControl* tsvc_rc)
+{
+    MppRcTemporal* pTOverRc = tsvc_rc->temporal_over_rc;
+    RK_S32 i = 0;
+    tsvc_rc->iRemainingBits += VGOP_SIZE * tsvc_rc->iBitsPerFrame;
+    tsvc_rc->iRemainingWeights = tsvc_rc->iGopNumberInVGop * WEIGHT_MULTIPLY;
+
+    tsvc_rc->iFrameCodedInVGop = 0;
+    tsvc_rc->iGopIndexInVGop = 0;
+    for (i = 0; i < tsvc_rc->tlayer_num; i++) {
+        pTOverRc[i].iGopBitsDq = 0;
+    }
+
+// tsvc_rc->iSkipFrameInVGop = 0;
+}
+
+
 
 MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 force_idr)
 {
@@ -399,11 +445,15 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
             ctx->fps_denom = 1;
         }
         ctx->fps_out = ctx->fps_num / ctx->fps_denom;
+        ctx->fps_in = cfg->fps_in_num / cfg->fps_in_denorm;
         if (ctx->fps_out == 0) {
             mpp_err("fps out can not be 0, change to default 30");
             ctx->fps_out = 30;
             ctx->fps_num = 30;
             ctx->fps_denom = 1;
+        }
+        if (ctx->fps_in == 0) {
+            ctx->fps_in = 30;
         }
         clear_acc = 1;
     }
@@ -454,6 +504,40 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
         gop_start = 1;
     }
 
+    if (change & MPP_ENC_RC_CFG_CHANGE_TSVC) {
+        RK_S32 i, k, n, kiGopSize;
+        MppTsvcRateControl *tsvc_rc = &ctx->tsvc_rc;
+        RK_S32 max_layer_id = 0;
+        mpp_rc_dbg_tsvcrc("update cfg->tlayer_num %d tsvc_rc->tlayer_num %d", cfg->tlayer_num, tsvc_rc->tlayer_num);
+        if (cfg->tlayer_num != tsvc_rc->tlayer_num) {
+            if (tsvc_rc->temporal_over_rc != NULL) {
+                mpp_free(tsvc_rc->temporal_over_rc);
+                tsvc_rc->temporal_over_rc = NULL;
+            }
+            tsvc_rc->temporal_over_rc = mpp_calloc(MppRcTemporal, cfg->tlayer_num);
+            kiGopSize = (1 << (cfg->tlayer_num - 1));
+            n = 0;
+            while (n < cfg->tlayer_num) {
+                tsvc_rc->temporal_over_rc[n].iTlayerWeight = cfg->tlayer_weight[n] / (1 << n);
+                mpp_rc_dbg_tsvcrc("iTlayerWeight[%d] = %d", n, tsvc_rc->temporal_over_rc[n].iTlayerWeight);
+                ++n;
+            }
+            max_layer_id = cfg->tlayer_num - 1;
+            for (n = 0; n < VGOP_SIZE; n += kiGopSize) {
+                tsvc_rc->iTlOfFrames[n] = 0;
+                for (i = 1; i <= max_layer_id; i++) {
+                    for (k = 1 << (max_layer_id - i); k < kiGopSize; k += (kiGopSize >> (i - 1))) {
+                        tsvc_rc->iTlOfFrames[k + n] = i;
+                        mpp_rc_dbg_tsvcrc("index %d layer %d", k + n, i);
+                    }
+                }
+            }
+            tsvc_rc->iPreviousGopSize = kiGopSize;
+            tsvc_rc->iGopNumberInVGop = VGOP_SIZE / kiGopSize;
+            tsvc_rc->tlayer_num = cfg->tlayer_num;
+            tsvc_rc->iBitsPerFrame = axb_div_c(cfg->bps_target, ctx->fps_denom, ctx->fps_num);
+        }
+    }
     /*
      * step 2: derivate parameters
      */
@@ -503,6 +587,14 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
             ctx->bits_per_inter -= ctx->bits_per_intra / (ctx->fps_out - 1);
         }
         mpp_rc_vbv_init(ctx, cfg);
+        if (ctx->tsvc_rc.tlayer_num > 1) {
+            ctx->tsvc_rc.iBitsPerFrame = ctx->bits_per_pic;
+            mpp_rc_init_vgop(&ctx->tsvc_rc);
+        }
+    }
+
+    if (mpp_rc_framerate_control(ctx) < 0) {
+        return MPP_NOK;
     }
 
     if (ctx->acc_total_count == gop)
@@ -524,6 +616,68 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
     ctx->quality = cfg->quality;
     cfg->change = 0;
 
+    return MPP_OK;
+}
+
+MPP_RET mpp_tsvcrc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
+{
+    MppTsvcRateControl *tsvc_rc = &ctx->tsvc_rc;
+    RK_U32 TemporalId = 0;
+    RK_S32 i = 0;
+
+    if (ctx->cur_frmtype == INTRA_FRAME) {
+        for (i = 0; i < tsvc_rc->tlayer_num ; i++) {
+            MppRcTemporal *t_over_rc = &tsvc_rc->temporal_over_rc[i];
+            t_over_rc->iPFrameNum = 0;
+            t_over_rc->iLinearCmplx = 0;
+        }
+        tsvc_rc->iGopIndexInVGop = 0;
+        tsvc_rc->iRemainingBits = 0;
+        mpp_rc_init_vgop(tsvc_rc);
+    }
+
+    TemporalId = tsvc_rc->iTlOfFrames[tsvc_rc->iFrameCodedInVGop];
+    tsvc_rc->uiTemporalId = TemporalId;
+    if (TemporalId == 0) {
+        if (tsvc_rc->iGopIndexInVGop == tsvc_rc->iGopNumberInVGop) {
+            mpp_rc_init_vgop (tsvc_rc);
+        }
+        tsvc_rc->iGopIndexInVGop++;
+    }
+
+    MppRcTemporal *t_over_rc = &tsvc_rc->temporal_over_rc[TemporalId];
+
+    tsvc_rc->iCurrentBitsLevel = BITS_NORMAL;
+    //allocate bits
+    if (ctx->cur_frmtype == INTRA_FRAME) {
+        tsvc_rc->iTargetBits = tsvc_rc->iBitsPerFrame * IDR_BITRATE_RATIO;
+    } else {
+        if (tsvc_rc->iRemainingWeights > t_over_rc->iTlayerWeight)
+            tsvc_rc->iTargetBits = (RK_U32)MPP_DIV(static_cast<int64_t> (tsvc_rc->iRemainingBits) * t_over_rc->iTlayerWeight,
+                                                   tsvc_rc->iRemainingWeights);
+        else //this case should be not hit. needs to more test case to verify this
+            tsvc_rc->iTargetBits = tsvc_rc->iRemainingBits;
+        if ((tsvc_rc->iTargetBits <= 0) && (tsvc_rc->bEnableFrameSkip == false)) {
+            tsvc_rc->iCurrentBitsLevel = BITS_EXCEEDED;
+        }
+        //  tsvc_rc->iTargetBits = MPP_CLIP3(tsvc_rc->iTargetBits, tsvc_rc->iMinBitsTl, tsvc_rc->iMaxBitsTl);
+    }
+
+    mpp_rc_dbg_tsvcrc("tsvc_rc->iRemainingBits = %d tsvc_rc->iTargetBits= %d ", tsvc_rc->iRemainingBits, tsvc_rc->iTargetBits);
+    tsvc_rc->iRemainingWeights -= t_over_rc->iTlayerWeight;
+
+//    if(TemporalId > 0)
+    // tsvc_rc->iTargetBits += tsvc_rc->iLastDiffBit[tsvc_rc->iFrameCodedInVGop];
+
+    rc_syn->bit_target = tsvc_rc->iTargetBits;
+
+    /* step 2: calc min and max bits */
+    rc_syn->bit_min = tsvc_rc->iTargetBits * ctx->min_rate;
+    rc_syn->bit_max = tsvc_rc->iTargetBits * ctx->max_rate;
+
+    /* step 3: save bit target as previous target for next frame */
+    rc_syn->type = ctx->cur_frmtype;
+    rc_syn->gop_mode = ctx->gop_mode;
     return MPP_OK;
 }
 
@@ -551,7 +705,7 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
             RK_S32 diff_bit = mpp_pid_calc(&ctx->pid_fps);
             /* only affected by last gop */
             ctx->pre_gop_left_bit =  ctx->pid_fps.i - diff_bit;
-            if ( abs(ctx->pre_gop_left_bit) / (ctx->gop - 1) > (ctx->bits_per_pic / 5)) {
+            if (abs(ctx->pre_gop_left_bit) / (ctx->gop - 1) > (ctx->bits_per_pic / 5)) {
                 RK_S32 val = 1;
                 if (ctx->pre_gop_left_bit < 0) {
                     val = -1;
@@ -682,6 +836,31 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
 
     return MPP_OK;
 }
+
+MPP_RET mpp_tsvcrc_update_hw_result(MppRateControl *ctx, RcHalResult *result)
+{
+
+    RK_S32 i = 0;
+    MppTsvcRateControl *tsvc_rc = &ctx->tsvc_rc;
+    MppRcTemporal *ov_rc = &tsvc_rc->temporal_over_rc[tsvc_rc->uiTemporalId];
+    tsvc_rc->iFrameDqBits = result->bits;
+    ov_rc->iGopBitsDq += tsvc_rc->iFrameDqBits;
+    ov_rc->iTotalBits += tsvc_rc->iFrameDqBits;
+    tsvc_rc->iLastDiffBit[tsvc_rc->iFrameCodedInVGop] = tsvc_rc->iTargetBits - tsvc_rc->iFrameDqBits;
+    tsvc_rc->iFrameCodedInVGop++;
+    tsvc_rc->iframe_num++;
+    if (tsvc_rc->iFrameCodedInVGop >= VGOP_SIZE) {
+        tsvc_rc->iFrameCodedInVGop = 0;
+        for (i = 0; i < tsvc_rc->tlayer_num; i++) {
+            ov_rc = &tsvc_rc->temporal_over_rc[i];
+            mpp_rc_dbg_tsvcrc("layer[%d] ratio %d", i, ov_rc->iGopBitsDq * 100 / (tsvc_rc->iBitsPerFrame * VGOP_SIZE));
+            mpp_rc_dbg_tsvcrc("layer[%d] total ratio %d", i, ov_rc->iTotalBits * 100 / (tsvc_rc->iframe_num * tsvc_rc->iBitsPerFrame));
+        }
+    }
+    tsvc_rc->iRemainingBits -= tsvc_rc->iFrameDqBits;
+    return MPP_OK;
+}
+
 
 MPP_RET mpp_rc_update_hw_result(MppRateControl *ctx, RcHalResult *result)
 {
@@ -1197,4 +1376,14 @@ MPP_RET mpp_rc_param_ops(struct list_head *head, RK_U32 frm_cnt,
     return ret;
 }
 
-
+MPP_RET mpp_rc_init_func(int mode, MppRcFunc *pfun)
+{
+    if ( mode > 0) {
+        pfun->rc_alloc_bits = mpp_tsvcrc_bits_allocation;
+        pfun->rc_update_result = mpp_tsvcrc_update_hw_result;
+    } else {
+        pfun->rc_alloc_bits = mpp_rc_bits_allocation;
+        pfun->rc_update_result = mpp_rc_update_hw_result;
+    }
+    return MPP_OK;
+}

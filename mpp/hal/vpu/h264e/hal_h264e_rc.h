@@ -29,4 +29,12 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
 MPP_RET h264e_vpu_update_buffers(H264eHalContext *ctx, H264eHwCfg *hw_cfg);
 MPP_RET h264e_vpu_mad_threshold(H264eHwCfg *hw_cfg, MppLinReg *mad, RK_U32 madCount);
 
+void h264e_vpu_tsvc_rc_init(H264eHalTsvcRc *svc_rc, RK_S32 max_layer_id);
+void h264e_vpu_tsvcrc_update(H264eHalTsvcRc *tsvc_rc, RK_S32 pic_bits,  RK_S32 avg_qp);
+
+void h264e_vpu_update_result(H264eHwCfg *hw_cfg, RK_S32 pic_bits, RK_S32 target_bits);
+void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
+                          MPP_RET (*send)(void* hal, RK_U32 *reg, RK_S32 d_qp),
+                          MPP_RET (*feedback)(h264e_feedback* fb, void * reg));
+
 #endif
