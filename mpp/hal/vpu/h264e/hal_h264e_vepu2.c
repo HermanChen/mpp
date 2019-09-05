@@ -692,6 +692,10 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         RK_S32 tail_0bit = 0;
         RK_U8  tail_byte = 0;
         RK_U8  tail_tmp = 0;
+        RK_U8 *dst_buf = NULL;
+        RK_S32 buf_size;
+        RK_S32 prefix_bit = 0;
+        RK_S32 prefix_byte = 0;
 
         {
             RK_S32 more_buf = 0;
@@ -710,6 +714,8 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         }
 
         memset(ctx->dst_buf, 0, ctx->buf_size);
+        dst_buf = ctx->dst_buf;
+        buf_size = ctx->buf_size;
 
         // copy hw stream to stream buffer first
         memcpy(ctx->src_buf, p, len);
@@ -722,8 +728,29 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         ctx->slice.frame_num = ctx->dpb->curr->frame_num;
         ctx->slice.pic_order_cnt_lsb = ctx->dpb->curr->poc;
 
+        if (ctx->svc) {
+            H264ePrefixNal prefix;
+
+            prefix.idr_flag = ctx->slice.idr_flag;
+            prefix.nal_ref_idc = ctx->slice.nal_reference_idc;
+            prefix.priority_id = 0;
+            prefix.no_inter_layer_pred_flag = 1;
+            prefix.dependency_id = 0;
+            prefix.quality_id = 0;
+            prefix.temporal_id = task->enc.temporal_id;
+            prefix.use_ref_base_pic_flag = 0;
+            prefix.discardable_flag = 0;
+            prefix.output_flag = 1;
+
+            prefix_bit = h264e_slice_write_prefix_nal_unit_svc(&prefix, dst_buf, buf_size);
+            prefix_byte = prefix_bit /= 8;
+            h264e_dpb_slice("prefix_len %d\n", prefix_byte);
+            dst_buf += prefix_byte;
+            buf_size -= prefix_byte;
+        }
+
         // write new header to header buffer
-        sw_len_bit = h264e_slice_write(&ctx->slice, ctx->dst_buf, ctx->buf_size);
+        sw_len_bit = h264e_slice_write(&ctx->slice, dst_buf, buf_size);
 
         hw_len_byte = (hw_len_bit + 7) / 8;
         sw_len_byte = (sw_len_bit + 7) / 8;
@@ -741,15 +768,17 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         mpp_assert(tail_0bit < 8);
 
         // move the reset slice data from src buffer to dst buffer
-        diff_size = h264e_slice_move(ctx->dst_buf, ctx->src_buf,
+        diff_size = h264e_slice_move(dst_buf, ctx->src_buf,
                                      sw_len_bit, hw_len_bit, len);
 
         h264e_dpb_slice("tail 0x%02x %d hw_len_bit %d sw_len_bit %d len %d hw_len_byte %d sw_len_byte %d diff %d\n",
                         tail_byte, tail_0bit, hw_len_bit, sw_len_bit, len, hw_len_byte, sw_len_byte, diff_size);
 
         if (ctx->slice.entropy_coding_mode) {
-            memcpy(ctx->dst_buf + sw_len_byte, ctx->src_buf + hw_len_byte,
+            memcpy(dst_buf + sw_len_byte, ctx->src_buf + hw_len_byte,
                    len - hw_len_byte);
+
+            len += prefix_byte;
 
             memcpy(p, ctx->dst_buf, len - hw_len_byte + sw_len_byte);
 
@@ -763,12 +792,12 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
             RK_S32 bit_len = len * 8 - tail_0bit + hdr_diff_bit;
             RK_S32 new_len = (bit_len + diff_size * 8 + 7) / 8;
 
-            ctx->dst_buf[new_len] = 0;
+            dst_buf[new_len] = 0;
 
             h264e_dpb_slice("frm %d len %d bit hw %d sw %d byte hw %d sw %d diff %d -> %d\n",
                             ctx->dpb->curr->frm_cnt, len, hw_len_bit, sw_len_bit,
                             hw_len_byte, sw_len_byte, diff_size, new_len);
-
+            new_len += prefix_byte;
             memcpy(p, ctx->dst_buf, new_len);
             p[new_len] = 0;
             len = new_len;
@@ -934,6 +963,7 @@ MPP_RET hal_h264e_vepu2_control(void *hal, RK_S32 cmd_type, void *param)
         if (change & MPP_ENC_H264_CFG_STREAM_TYPE)
             dst->stream_type = src->stream_type;
         if (change & MPP_ENC_H264_CFG_CHANGE_PROFILE) {
+            dst->svc = src->svc;
             dst->profile = src->profile;
             dst->level = src->level;
         }

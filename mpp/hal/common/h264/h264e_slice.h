@@ -57,6 +57,21 @@ typedef struct H264eMmco_t {
     RK_S32 max_long_term_frame_idx_plus1;   // for MMCO 4
 } H264eMmco;
 
+typedef struct H264ePrefixNal_t {
+    RK_S32      nal_ref_idc;
+
+    /* svc extension header */
+    RK_S32      idr_flag;
+    RK_S32      priority_id;
+    RK_S32      no_inter_layer_pred_flag;
+    RK_S32      dependency_id;
+    RK_S32      quality_id;
+    RK_S32      temporal_id;
+    RK_S32      use_ref_base_pic_flag;
+    RK_S32      discardable_flag;
+    RK_S32      output_flag;
+} H264ePrefixNal;
+
 typedef struct H264eSlice_t {
     /* Input parameter before reading */
     RK_U32      max_num_ref_frames;
@@ -126,6 +141,8 @@ H264eMmco *h264e_slice_gen_mmco(RK_S32 id, RK_S32 arg0, RK_S32 arg1);
 MPP_RET h264e_slice_add_mmco(H264eSlice *slice, H264eMmco *mmco);
 
 void h264e_init_vepu_slice(H264eHalContext *ctx);
+
+RK_S32 h264e_slice_write_prefix_nal_unit_svc(H264ePrefixNal *nal, void *p, RK_S32 size);
 
 #ifdef __cplusplus
 }

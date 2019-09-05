@@ -1874,6 +1874,7 @@ MPP_RET hal_h264e_rkv_control(void *hal, RK_S32 cmd_type, void *param)
         if (change & MPP_ENC_H264_CFG_STREAM_TYPE)
             dst->stream_type = src->stream_type;
         if (change & MPP_ENC_H264_CFG_CHANGE_PROFILE) {
+            dst->svc = src->svc;
             dst->profile = src->profile;
             dst->level = src->level;
         }

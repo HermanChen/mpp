@@ -446,6 +446,7 @@ typedef struct H264eHalContext_t {
     H264eMbRcCtx                    mb_rc;
 
     // if true use user hierarchy info
+    RK_S32                          svc;
     RK_S32                          usr_hier;
     MppEncHierCfg                   hier_cfg;
 

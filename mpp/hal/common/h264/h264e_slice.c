@@ -695,3 +695,87 @@ RK_S32 h264e_slice_move(RK_U8 *dst, RK_U8 *src, RK_S32 dst_bit, RK_S32 src_bit, 
 
     return diff_len;
 }
+
+RK_S32 h264e_slice_write_prefix_nal_unit_svc(H264ePrefixNal *prefix, void *p, RK_S32 size)
+{
+    H264eStream stream;
+    H264eStream *s = &stream;
+    RK_S32 bitCnt = 0;
+
+    h264e_stream_init(s, p, size);
+
+    /* nal header */
+    h264e_stream_put_bits(s, 0, 24, "start_code_zero");
+    h264e_stream_put_bits(s, 1, 8, "start_code_one");
+    WR_LOG("start_code", 1);
+
+    h264e_stream_put_bits(s, 0, 1, "forbidden_bit");
+    WR_LOG("forbidden_bit", 0);
+
+    h264e_stream_put_bits(s, prefix->nal_ref_idc, 2, "nal_reference_idc");
+    WR_LOG("nal_reference_idc", prefix->nal_ref_idc);
+
+    h264e_stream_put_bits(s, 14, 5, "nalu_type");
+    WR_LOG("nalu_type", 14);
+
+    // svc_extension_flag
+    h264e_stream_put_bits(s, 1, 1, "svc_extension_flag");
+    WR_LOG("svc_extension_flag", 1);
+
+    // nal_unit_header_svc_extension
+    h264e_stream_put_bits(s, prefix->idr_flag, 1, "idr_flag");
+    WR_LOG("idr_flag", prefix->idr_flag);
+
+    h264e_stream_put_bits(s, prefix->priority_id , 6, "priority_id");
+    WR_LOG("priority_id", prefix->priority_id);
+
+    h264e_stream_put_bits(s, prefix->no_inter_layer_pred_flag , 1, "no_inter_layer_pred_flag");
+    WR_LOG("no_inter_layer_pred_flag", prefix->no_inter_layer_pred_flag);
+
+    h264e_stream_put_bits(s, prefix->dependency_id, 3, "dependency_id");
+    WR_LOG("dependency_id", prefix->dependency_id);
+
+    h264e_stream_put_bits(s, prefix->quality_id, 4, "quality_id");
+    WR_LOG("quality_id", prefix->quality_id);
+
+    h264e_stream_put_bits(s, prefix->temporal_id, 3, "temporal_id");
+    WR_LOG("temporal_id", prefix->temporal_id);
+
+    h264e_stream_put_bits(s, prefix->use_ref_base_pic_flag, 1, "use_ref_base_pic_flag");
+    WR_LOG("use_ref_base_pic_flag", prefix->use_ref_base_pic_flag);
+
+    h264e_stream_put_bits(s, prefix->discardable_flag, 1, "discardable_flag");
+    WR_LOG("discardable_flag", prefix->discardable_flag);
+
+    h264e_stream_put_bits(s, prefix->output_flag, 1, "output_flag");
+    WR_LOG("output_flag", prefix->output_flag);
+
+    h264e_stream_put_bits(s, 3, 2, "reserved_three_2bits");
+    WR_LOG("reserved_three_2bits", 3);
+
+    // prefix_nal_unit_svc
+    if (prefix->nal_ref_idc) {
+        // store_ref_base_pic_flag
+        h264e_stream_put_bits(s, 0, 1, "store_ref_base_pic_flag");
+        WR_LOG("store_ref_base_pic_flag", 0);
+
+        h264e_stream_put_bits(s, 0, 1, "additional_prefix_nal_unit_extension_flag");
+        WR_LOG("additional_prefix_nal_unit_extension_flag", 1);
+    }
+
+    // rbsp_trailing_bits
+    h264e_stream_put_bits(s, 1, 1, "rbsp_stop_one_bit");
+    WR_LOG("rbsp_stop_one_bit", 1);
+
+    if (s->buffered_bits) {
+        // NOTE: only have aligned bit on cabac mode but cavlc also need to write byte cache to memory
+        RK_S32 left = (8 - s->buffered_bits);
+
+        h264e_stream_put_bits(s, 0, left, "rbsp_alignment_zero_bit ");
+        WR_LOG("rbsp_alignment_zero_bit ", 0);
+    }
+
+    bitCnt = s->buffered_bits + s->byte_cnt * 8;
+
+    return bitCnt;
+}
