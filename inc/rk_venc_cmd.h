@@ -854,12 +854,6 @@ typedef struct MppEncSliceSplit_t {
     RK_S32  slice_size;
 } MppEncSliceSplit;
 
-typedef enum MppEncRefMode_e {
-    GopRefModeRockchip,
-    GopRefModeHisilicon,
-    GopRefModeButt,
-} MppEncRefMode;
-
 #define MAX_GOP_REF_LEN         16
 #define GOP_REF_SIZE            (MAX_GOP_REF_LEN+1)
 
@@ -888,21 +882,31 @@ typedef struct MppEncGopRef_t {
      */
     RK_U32 gop_cfg_mode;
 
-    union {
-        // Rockchip mode
-        struct {
-            RK_U32 ref_gop_len;
-            MppGopRefInfo gop_info[GOP_REF_SIZE];
-        };
+    /*
+     * long-term reference frame interval is used for error recovery
+     *
+     * When lt_ref_interval is zero the long-term frame mode is indicated by
+     * gop_info configuration.
+     * When lt_ref_interval is non-zero (usually 2~3 second interval) then
+     * the long-term reference can be used for error recovery.
+     */
+    RK_S32 lt_ref_interval;
 
-        // Hisilicon mode
-        struct {
-            RK_U32 hi_gop_mode;
-            RK_U32 hi_base;
-            RK_U32 hi_enhance;
-            RK_U32 hi_enable_pred;
-        };
-    };
+    /*
+     * max long-term reference frame index plus 1 indicated the max number of
+     * long-term reference frame.
+     *
+     * When zero there is no long-term refernce frame.
+     * When larger than zero the max long-term reference frame index is
+     * max_lt_ref_idx_p1 - 1.
+     * The max long-term reference frame index should NOT larger than
+     * max_num_ref_frames in sps and should NOT over the limit in gop_info.
+     */
+    RK_S32 max_lt_ref_idx_p1;
+
+    // Rockchip gop mode setup
+    RK_U32 ref_gop_len;
+    MppGopRefInfo gop_info[GOP_REF_SIZE];
 } MppEncGopRef;
 
 /**

@@ -349,6 +349,10 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
         ref->gop_cfg_enable = 1;
         ref->gop_cfg_mode   = 0;
 
+        // default no LTR
+        ref->lt_ref_interval = 0;
+        ref->max_lt_ref_idx_p1 = 0;
+
         if (p->gop_mode == 3) {
             // tsvc4
             //      /-> P1      /-> P3        /-> P5      /-> P7
@@ -413,6 +417,8 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[8].is_non_ref   = 0;
             gop[8].is_lt_ref    = 1;
             gop[8].lt_idx       = 0;
+
+            ref->max_lt_ref_idx_p1 = 1;
         } else if (p->gop_mode == 2) {
             // tsvc3
             //     /-> P1      /-> P3
