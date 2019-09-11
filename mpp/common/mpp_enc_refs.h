@@ -77,6 +77,9 @@
 typedef struct MppEncHierCfg_t {
     RK_U32  change;
 
+    RK_S32 lt_ref_interval;
+    RK_S32 max_lt_ref_cnt;
+
     // hierarchy pattern loop length unit in frames
     // NOTE: need one extra size to close the gop loop
     // For example the P8 reference P0 or P4 is quite different

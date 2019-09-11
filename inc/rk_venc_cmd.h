@@ -898,11 +898,11 @@ typedef struct MppEncGopRef_t {
      *
      * When zero there is no long-term refernce frame.
      * When larger than zero the max long-term reference frame index is
-     * max_lt_ref_idx_p1 - 1.
+     * max_lt_ref_cnt - 1.
      * The max long-term reference frame index should NOT larger than
      * max_num_ref_frames in sps and should NOT over the limit in gop_info.
      */
-    RK_S32 max_lt_ref_idx_p1;
+    RK_S32 max_lt_ref_cnt;
 
     // Rockchip gop mode setup
     RK_U32 ref_gop_len;

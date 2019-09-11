@@ -120,9 +120,9 @@ static void h264e_dpb_dump_hier(H264eDpb *dpb)
 {
     RK_S32 i = 0;
 
-    mpp_log_f("dpb %p gop length %d\n", dpb, dpb->gop_len);
+    mpp_log_f("dpb %p gop length %d\n", dpb, dpb->st_gop_len);
 
-    for (i = 0; i < dpb->gop_len + 1; i++) {
+    for (i = 0; i < dpb->st_gop_len + 1; i++) {
         mpp_log_f("hier %d cnt %2d status 0x%03x dist %d\n", i,
                   dpb->ref_cnt[i], dpb->ref_sta[i], dpb->ref_dist[i]);
     }
@@ -314,8 +314,13 @@ MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg)
     memset(dpb->ref_cnt, 0, sizeof(dpb->ref_cnt));
     memset(dpb->ref_dist, 0, sizeof(dpb->ref_dist));
 
-    dpb->gop_len = cfg->length;
-    dpb->max_lt_idx = 0;
+    dpb->st_gop_len = cfg->length;
+    dpb->lt_gop_len = cfg->lt_ref_interval;
+
+    if (cfg->max_lt_ref_cnt)
+        dpb->max_lt_idx = cfg->max_lt_ref_cnt - 1;
+    else
+        dpb->max_lt_idx = 0;
 
     mpp_enc_get_hier_info(&info, cfg);
     base = info;
@@ -333,6 +338,9 @@ MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg)
         }
 
         if (!info->status.is_non_ref && info->status.is_lt_ref) {
+            if (cfg->max_lt_ref_cnt)
+                mpp_err_f("Can NOT use both lt_ref_interval and gop_info lt_ref at the same time!\n ");
+
             if (info->status.lt_idx > dpb->max_lt_idx) {
                 dpb->max_lt_idx = info->status.lt_idx;
                 h264e_dpb_dbg_f("curr %d update lt_idx to %d\n",
@@ -373,16 +381,18 @@ static void h264e_dpb_frm_swap(H264eDpb *dpb, RK_S32 a, RK_S32 b)
     dpb->frames[b] = tmp;
 }
 
-H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 new_seq)
+H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req)
 {
-    RK_S32 gop_cnt = 0;
-    RK_S32 gop_idx = 0;
-    RK_S32 gop_idx_wrap = 0;
-
     H264eDpbFrm *frm = &dpb->frames[dpb->curr_idx];
-
-    h264e_dpb_dbg_f("try get curr %d new_seq %d gop cnt %d idx %d\n",
-                    dpb->seq_idx, new_seq, dpb->gop_cnt, dpb->gop_idx);
+    // current st gop info for update
+    // st_gop_idx_wrap is for reference relationship index
+    RK_S32 seq_idx = dpb->seq_idx++;
+    RK_S32 idr_gop_idx = dpb->idr_gop_idx;
+    RK_S32 st_gop_cnt = dpb->st_gop_cnt;
+    RK_S32 st_gop_idx = dpb->st_gop_idx;
+    RK_S32 st_gop_idx_wrap = st_gop_idx;
+    RK_S32 lt_req = 0;
+    RK_S32 poc_lsb = dpb->poc_lsb;
 
     if (!frm->inited)
         h264e_dpb_init_curr(dpb, frm);
@@ -390,73 +400,133 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 new_seq)
     mpp_assert(!frm->on_used);
     mpp_assert(!dpb->curr);
 
-    if (new_seq) {
-        // NOTE: gop_idx here is for next gop_idx
-        dpb->gop_idx = 1;
-        dpb->gop_cnt = 0;
+    /*
+     * step 1: generate flag
+     *
+     * St gop structure should be reset by idr qop or lt gop.
+     * It means when user request IDR frame or T0 long-term reference frame
+     * the st gop struture should be reset to index 0
+     */
+    if (dpb->lt_gop_len && !dpb->lt_gop_idx)
+        lt_req = 1;
 
-        if (dpb->seq_idx)
-            dpb->seq_cnt++;
+    dpb->idr_req = idr_req;
+    dpb->lt_req = lt_req;
 
-        dpb->seq_idx = 0;
+    h264e_dpb_dbg_f("prev %5d - gop i [%d:%d] l [%d:%d] s [%d:%d] - req i %d lt %d\n",
+                    seq_idx, dpb->idr_gop_cnt, dpb->idr_gop_idx,
+                    dpb->lt_gop_cnt, dpb->lt_gop_idx, dpb->st_gop_cnt,
+                    dpb->st_gop_idx, idr_req, lt_req);
 
-        gop_cnt = 0;
-        gop_idx = 0;
+    /*
+     * step 2: process index update st gop accoring to flags
+     */
+    if (idr_req) {
+        // update current and next st gop status
+        // NOTE: st_gop_idx here is for next st_gop_idx and idr_req will reset st_gop_cnt
+        dpb->st_gop_idx = 1;
+        dpb->st_gop_cnt = 0;
+
+        st_gop_cnt = 0;
+        st_gop_idx = 0;
+
+        // update idr gop status
+        if (dpb->idr_gop_idx)
+            dpb->idr_gop_cnt++;
+
+        idr_gop_idx = 0;
+        dpb->idr_gop_idx = 1;
+
+        dpb->poc_lsb = 2;
+        poc_lsb = 0;
     } else {
-        gop_cnt = dpb->gop_cnt;
-        gop_idx = dpb->gop_idx++;
+        st_gop_cnt = dpb->st_gop_cnt;
+        st_gop_idx = dpb->st_gop_idx;
+
+        if (lt_req) {
+            // NOTE: lt_req will not reset st_gop_cnt
+            dpb->st_gop_idx = 1;
+            dpb->st_gop_cnt++;
+        } else {
+            dpb->st_gop_idx++;
+
+            if (dpb->st_gop_idx >= dpb->st_gop_len) {
+                dpb->st_gop_idx = 0;
+                dpb->st_gop_cnt++;
+            }
+        }
+
+        dpb->idr_gop_idx++;
+
+        poc_lsb = dpb->poc_lsb;
+        dpb->poc_lsb += 2;
+        if (dpb->poc_lsb >= dpb->max_poc_lsb)
+            dpb->poc_lsb = 0;
     }
 
-    h264e_dpb_dbg_f("A frm cnt %d gop %d idx %d dpb gop %d idx %d\n",
-                    frm->frm_cnt, gop_cnt, gop_idx,
-                    dpb->gop_cnt, dpb->gop_idx);
-
-    if (dpb->gop_idx >= dpb->gop_len) {
-        dpb->gop_idx = 0;
-        dpb->gop_cnt++;
+    if (dpb->lt_gop_len) {
+        dpb->lt_gop_idx++;
+        if (dpb->lt_gop_idx >= dpb->lt_gop_len)
+            dpb->lt_gop_idx = 0;
     }
 
-    frm->frm_cnt = dpb->seq_idx++;
-    frm->gop_cnt = gop_cnt;
-    frm->gop_idx = gop_idx;
+    if (!st_gop_idx && st_gop_cnt && !lt_req)
+        st_gop_idx_wrap = dpb->st_gop_len;
+    else
+        st_gop_idx_wrap = st_gop_idx;
 
-    h264e_dpb_dbg_f("B frm cnt %d gop %d idx %d dpb gop %d idx %d\n",
-                    frm->frm_cnt, gop_cnt, gop_idx,
-                    dpb->gop_cnt, dpb->gop_idx);
+    h264e_dpb_dbg_f("curr %5d - gop s [%d:%d] map -> %d poc %d\n",
+                    seq_idx, st_gop_cnt, st_gop_idx, st_gop_idx_wrap, poc_lsb);
 
-    gop_idx_wrap = gop_idx;
+    h264e_dpb_dbg_f("next %5d - gop i [%d:%d] t [%d:%d] s [%d:%d] - req i %d lt %d\n",
+                    dpb->seq_idx, dpb->idr_gop_cnt, dpb->idr_gop_idx,
+                    dpb->lt_gop_cnt, dpb->lt_gop_idx, dpb->st_gop_cnt,
+                    dpb->st_gop_idx, idr_req, lt_req);
 
-    if (!gop_idx && gop_cnt)
-        gop_idx_wrap = dpb->gop_len;
+    /*
+     * step 3: update frame information
+     */
+    frm->on_used    = 1;
+    frm->frm_cnt    = idr_gop_idx;
+    frm->gop_cnt    = st_gop_cnt;
+    frm->gop_idx    = st_gop_idx;
+    frm->info       = dpb->ref_inf[st_gop_idx_wrap];
+    frm->ref_status = dpb->ref_sta[st_gop_idx];
+    frm->ref_count  = dpb->ref_cnt[st_gop_idx];
+    frm->ref_dist   = dpb->ref_dist[st_gop_idx_wrap];
+    frm->poc        = poc_lsb;
 
-    frm->info           = dpb->ref_inf[gop_idx_wrap];
-    frm->ref_status     = dpb->ref_sta[gop_idx];
-    frm->ref_count      = dpb->ref_cnt[gop_idx];
-    frm->ref_dist       = dpb->ref_dist[gop_idx_wrap];
-    frm->poc            = frm->frm_cnt * 2;
-    frm->lt_idx         = frm->info.lt_idx;
-    frm->on_used        = 1;
+    // update info on long-term request
+    if (lt_req) {
+        frm->info.is_non_ref = 0;
+        frm->info.is_lt_ref = 1;
+        frm->info.lt_idx = dpb->lt_ref_idx;
+        frm->info.temporal_id = 0;
 
-    h264e_dpb_dbg_f("setup frm %d gop %d idx %d wrap %d ref dist %d\n",
-                    frm->frm_cnt, frm->gop_cnt, frm->gop_idx, gop_idx_wrap, frm->ref_dist);
+        h264e_dpb_dbg_f("lt_idx %d\n", dpb->lt_ref_idx);
 
-    dpb->curr = frm;
+        dpb->lt_ref_idx++;
+        if (dpb->lt_ref_idx > dpb->max_lt_idx)
+            dpb->lt_ref_idx = 0;
+    }
 
-    h264e_dpb_dbg_f("frm %d old frm num %d next %d\n",
-                    frm->frm_cnt, dpb->curr_frm_num, dpb->next_frm_num);
-
-    // new_seq is for dpb reset and IDR frame
-    if (new_seq) {
-        RK_S32 i;
-
+    // update info on IDR request
+    if (idr_req) {
         frm->info.is_idr = 1;
         frm->info.is_intra = 1;
+        frm->frame_num = 0;
+        frm->poc = 0;
+    }
+
+    frm->lt_idx = (frm->info.is_lt_ref) ? (frm->info.lt_idx) : (-1);
+
+    // idr_req is for dpb reset and IDR frame
+    if (idr_req) {
+        RK_S32 i;
 
         // init to 0
         dpb->curr_frm_num = 0;
         dpb->next_frm_num = 1;
-        frm->frame_num = 0;
-        frm->poc = 0;
 
         // mmco 5 mark all reference frame to be non-referenced
         for (i = 0; i < dpb->curr_idx; i++) {
@@ -479,10 +549,13 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 new_seq)
 
     frm->frame_num = dpb->curr_frm_num;
 
+    dpb->curr = frm;
     dpb->next_frm_num = dpb->curr_frm_num + !frm->info.is_non_ref;
-    h264e_dpb_dbg_f("frm %d new frm num %d next %d\n",
-                    frm->frm_cnt, dpb->curr_frm_num, dpb->next_frm_num);
 
+    h264e_dpb_dbg_f("frm: %5d gop [%d:%d] frm_num [%d:%d] poc %d R%dL%d ref %d\n",
+                    frm->frm_cnt, frm->gop_cnt, frm->gop_idx,
+                    frm->frame_num, dpb->next_frm_num, frm->poc,
+                    !frm->info.is_non_ref, frm->info.is_lt_ref, frm->ref_dist);
 
     if (hal_h264e_debug & H264E_DBG_DPB)
         h264e_dpb_dump_frms(dpb);

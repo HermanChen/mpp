@@ -766,12 +766,6 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
         MppEncGopRef *ref = (MppEncGopRef *)param;
         ctx->cfg->misc.gop_ref = *ref;
 
-        RK_S32 i;
-        RK_S32 pos = 0;
-        MppEncHierCfg *hier = &ctx->hier_cfg;
-        char *fmt = hier->ref_fmt;
-        size_t size = sizeof(hier->ref_fmt);
-
         ctx->hdr_status = HDR_NEED_UPDATED;
 
         if (!ref->gop_cfg_enable) {
@@ -779,15 +773,30 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
             break;
         }
 
-        // Rockchip config mode
         if (ref->ref_gop_len > MAX_GOP_REF_LEN) {
             mpp_err("ref gop length %d is too large\n", ref->ref_gop_len);
             ret = MPP_NOK;
             break;
         }
 
+        MppEncHierCfg *hier = &ctx->hier_cfg;
+
         hier->length = ref->ref_gop_len;
-        h264e_dpb_dbg("ref_gop_len %d \n", ref->ref_gop_len);
+        hier->lt_ref_interval = ref->lt_ref_interval;
+        hier->max_lt_ref_cnt = ref->max_lt_ref_cnt;
+
+        h264e_dpb_dbg("ref_gop_len %d LTR interval %d max_lt_ref_idx_p1 %d\n",
+                      ref->ref_gop_len, hier->lt_ref_interval,
+                      hier->max_lt_ref_cnt);
+
+        if (hier->lt_ref_interval)
+            mpp_assert(hier->max_lt_ref_cnt > 0);
+
+        RK_S32 i;
+        RK_S32 pos = 0;
+        char *fmt = hier->ref_fmt;
+        size_t size = sizeof(hier->ref_fmt);
+        RK_S32 max_lt_ref_idx = -1;
 
         for (i = 0; i < hier->length + 1; i++) {
             RK_S32 is_non_ref = ref->gop_info[i].is_non_ref;
@@ -799,13 +808,24 @@ MPP_RET hal_h264e_vepu1_control(void *hal, RK_S32 cmd_type, void *param)
             pos += snprintf(fmt + pos, size - pos, "%s",
                             (is_non_ref) ? "N" : (is_lt_ref) ? "L" : "S");
 
-            if (is_lt_ref)
+            if (is_lt_ref) {
                 pos += snprintf(fmt + pos, size - pos, "%d", ref->gop_info[i].lt_idx);
+                if (ref->gop_info[i].lt_idx > max_lt_ref_idx)
+                    max_lt_ref_idx = ref->gop_info[i].lt_idx;
+            }
 
             pos += snprintf(fmt + pos, size - pos, "T%d", ref->gop_info[i].temporal_id);
 
             h264e_dpb_dbg("pos %d fmt %s \n", pos, fmt);
         }
+
+        if (max_lt_ref_idx + 1 > hier->max_lt_ref_cnt) {
+            mpp_err("mismatch max_lt_ref_idx_p1 %d vs %d\n",
+                    max_lt_ref_idx + 1, hier->max_lt_ref_cnt);
+        }
+
+        if (hier->lt_ref_interval && max_lt_ref_idx >= 0)
+            mpp_err("Can NOT use both lt_ref_interval and gop_info lt_ref at the same time!\n");
 
         ctx->usr_hier = 1;
     } break;

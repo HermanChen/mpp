@@ -88,6 +88,7 @@ typedef struct H264eDpbFrmInfo_t {
 
 typedef struct  H264eDpbFrm_t {
     H264eDpb            *dpb;
+
     // frame index in frames
     RK_S32              frm_cnt;
     // gop index in one gop structure
@@ -191,12 +192,28 @@ typedef struct H264eDpb_t {
     RK_S32              max_frm_num;
     RK_S32              max_poc_lsb;
 
-    // status and count for one gop structure
-    RK_S32              seq_cnt;
+    // overall frame counter
     RK_S32              seq_idx;
-    RK_S32              gop_len;
-    RK_S32              gop_cnt;
-    RK_S32              gop_idx;
+
+    // status and count for one gop structure
+    // idr_gop  - for intra / IDR frame group of picture
+    // st_gop   - for short-term reference group of picture in TSVC mode
+    // lt_gop   - for long-term reference group of picture in SVC mode
+    RK_S32              idr_gop_cnt;
+    RK_S32              idr_gop_idx;
+    RK_S32              idr_req;
+    RK_S32              poc_lsb;
+
+    RK_S32              st_gop_len;
+    RK_S32              st_gop_cnt;
+    RK_S32              st_gop_idx;
+
+    RK_S32              lt_gop_len;
+    RK_S32              lt_gop_cnt;
+    RK_S32              lt_gop_idx;
+    RK_S32              lt_req;
+
+    RK_S32              lt_ref_idx;
 
     RK_S32              curr_frm_num;
     RK_S32              next_frm_num;
