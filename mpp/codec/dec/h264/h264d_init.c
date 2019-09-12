@@ -1659,6 +1659,9 @@ UPDATE_GOP_INFO:
     if (gop->curr_err_skip)
         p_err->cur_err_flag |= 1;
 
+    if (currSlice->svcExt.valid)
+        gop->curr_tid = currSlice->svcExt.temporal_id;
+
     p_Dec->in_task->temp_id = gop->curr_tid;
     p_Dec->in_task->gop_idx = gop->curr_gop_idx;
 
