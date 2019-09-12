@@ -642,6 +642,18 @@ MPP_RET h264d_parse(void *decoder, HalDecTask *in_task)
         }
     }
     in_task->valid = 1;
+
+    {
+        // save lt_ref_idx to current task
+        H264_StorePic_t *pic = p_Dec->p_Vid->last_pic;
+        RK_S32 lt_ref_idx = -1;
+
+        if (pic->used_for_reference && pic->is_long_term)
+            lt_ref_idx = pic->long_term_frame_idx;
+
+        in_task->lt_ref_idx = lt_ref_idx;
+    }
+
     if (!in_task->flags.parse_err) {
         in_task->syntax.number = p_Dec->dxva_ctx->syn.num;
         in_task->syntax.data   = (void *)p_Dec->dxva_ctx->syn.buf;
@@ -690,6 +702,10 @@ MPP_RET h264d_callback(void *decoder, void *errinfo)
                     mpp_frame_set_discard(mframe, MPP_FRAME_ERR_UNKNOW);
                 }
             }
+
+            MppMeta meta = mpp_frame_get_meta(mframe);
+            mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, task_dec->temp_id);
+            mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, task_dec->lt_ref_idx);
 
             gop->gop_err[task_dec->gop_idx] = (ctx->hard_err || task_err) ? 1 : 0;
             H264D_DBG(H264D_DBG_CALLBACK, "[CALLBACK] g_no=%d, out_idx=%d, dpberr=%d, harderr=%d, ref_flag=%d, errinfo=%d, discard=%d\n",

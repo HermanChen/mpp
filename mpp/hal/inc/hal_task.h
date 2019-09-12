@@ -168,6 +168,7 @@ typedef struct HalDecTask_t {
 
     RK_S32          temp_id;
     RK_S32          gop_idx;
+    RK_S32          lt_ref_idx;
 } HalDecTask;
 
 typedef struct HalEncTask_t {
