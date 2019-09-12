@@ -218,7 +218,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
 
     /* setup default parameter */
     p->fps = 30;
-    p->gop = 60;
+    p->gop = 600;
     p->bps = p->width * p->height / 8 * p->fps;
 
     prep_cfg->change        = MPP_ENC_PREP_CFG_CHANGE_INPUT |
@@ -350,7 +350,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
 
         // default no LTR
         ref->lt_ref_interval = 0;
-        ref->max_lt_ref_idx_p1 = 0;
+        ref->max_lt_ref_cnt = 0;
 
         if (p->gop_mode == 3) {
             // tsvc4
@@ -417,7 +417,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[8].is_lt_ref    = 1;
             gop[8].lt_idx       = 0;
 
-            ref->max_lt_ref_idx_p1 = 1;
+            ref->max_lt_ref_cnt = 2;
         } else if (p->gop_mode == 2) {
             // tsvc3
             //     /-> P1      /-> P3
@@ -456,6 +456,10 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[4].is_non_ref   = 0;
             gop[4].is_lt_ref    = 0;
             gop[4].lt_idx       = 0;
+
+            // set to lt_ref interval with looping LTR idx
+            ref->lt_ref_interval = 10;
+            ref->max_lt_ref_cnt = 3;
         } else if (p->gop_mode == 1) {
             // tsvc2
             //   /-> P1
@@ -538,8 +542,10 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
             if (ret == MPP_NOK || feof(p->fp_input)) {
                 mpp_log("found last frame. feof %d\n", feof(p->fp_input));
                 p->frm_eos = 1;
-            } else if (ret == MPP_ERR_VALUE)
+                ret = MPP_OK;
+            } else if (ret == MPP_ERR_VALUE) {
                 goto RET;
+            }
         } else {
             ret = fill_yuv_image(buf, p->width, p->height, p->hor_stride,
                                  p->ver_stride, p->fmt, p->frame_count);
@@ -609,6 +615,24 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
         mpp_frame_set_fmt(frame, p->fmt);
         mpp_frame_set_eos(frame, p->frm_eos);
 
+        if (p->ref.max_lt_ref_cnt) {
+            // force idr as reference every 15 frames
+            RK_S32 quotient = p->frame_count / 15;
+            RK_S32 remainder = p->frame_count % 15;
+
+            if (p->frame_count && remainder == 0) {
+                MppMeta meta = mpp_frame_get_meta(frame);
+                static RK_S32 lt_ref_idx = 0;
+
+                mpp_log("force lt_ref %d\n", lt_ref_idx);
+                mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, lt_ref_idx);
+                lt_ref_idx++;
+                if (lt_ref_idx >= p->ref.max_lt_ref_cnt)
+                    lt_ref_idx = 0;
+            } else
+                mpp_frame_set_meta(frame, NULL);
+        }
+
         if (p->fp_input && feof(p->fp_input))
             mpp_frame_set_buffer(frame, NULL);
         else
@@ -637,7 +661,10 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
             MppMeta meta = mpp_packet_get_meta(packet);
             RK_S32 temporal_id = 0;
 
-            mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+            ret = mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+            if (ret == MPP_OK)
+                mpp_log_f("get temporal id %d\n", temporal_id);
+            ret = MPP_OK;
 
             p->pkt_eos = mpp_packet_get_eos(packet);
 

@@ -324,6 +324,22 @@ static int decode_simple(MpiDecLoopData *data)
                     mpp_log("decode_get_frame get frame %d\n", data->frame_count);
                     if (data->fp_output && !err_info)
                         dump_mpp_frame_to_file(frame, data->fp_output);
+
+                    MppMeta meta = mpp_frame_get_meta(frame);
+                    if (meta) {
+                        RK_S32 temporal_id = 0;
+                        RK_S32 lt_ref_idx = -1;
+
+                        ret = mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+                        if (MPP_OK == ret)
+                            mpp_log("temporal_id %d\n", temporal_id);
+
+                        ret = mpp_meta_get_s32(meta, KEY_LONG_REF_IDX, &lt_ref_idx);
+                        if (MPP_OK == ret && lt_ref_idx >= 0)
+                            mpp_log("lt_ref_idx %-2d\n", lt_ref_idx);
+
+                        ret = MPP_OK;
+                    }
                 }
                 frm_eos = mpp_frame_get_eos(frame);
                 mpp_frame_deinit(&frame);
