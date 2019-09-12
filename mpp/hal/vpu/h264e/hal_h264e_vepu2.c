@@ -243,6 +243,13 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
         enc_task->temporal_id = frm->info.temporal_id;
 
         h264e_dpb_build_marking(ctx->dpb);
+        {
+            MppMeta meta = mpp_packet_get_meta(enc_task->packet);
+            if (meta) {
+                mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, frm->info.temporal_id);
+                mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, frm->lt_idx);
+            }
+        }
     } else {
         RK_U32 buf2_idx = ctx->frame_cnt & 1;
 
