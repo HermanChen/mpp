@@ -229,6 +229,17 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
 
         H264eDpbFrm *frm = h264e_dpb_get_curr(ctx->dpb,
                                               (hw_cfg->frame_type == H264E_VPU_FRAME_I));
+
+        {
+            MppMeta meta = mpp_frame_get_meta(enc_task->frame);
+            RK_S32 lt_ref_idx = -1;
+
+            mpp_meta_get_s32(meta, KEY_LONG_REF_IDX, &lt_ref_idx);
+            if (lt_ref_idx >= 0)
+                h264e_dpb_force_ref(ctx->dpb, 1, lt_ref_idx);
+        }
+
+
         H264eDpbFrm *ref = h264e_dpb_get_refr(frm);
 
         h264e_dpb_build_list(ctx->dpb);

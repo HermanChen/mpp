@@ -135,7 +135,7 @@ void h264e_dpb_dump_frm(H264eDpb *dpb, const char *caller)
     mpp_log_f("dump dpb frame info in %s\n", caller);
 
     mpp_log_f("dpb %p total count %d\n", dpb, dpb->total_cnt);
-    mpp_log_f("dpb status - init use cnt gop idx type idr ref lt idx sta cnt\n", dpb, dpb->total_cnt);
+    mpp_log_f("dpb status - init use cnt gop idx type idr ref lt idx sta cnt tid\n", dpb, dpb->total_cnt);
 
     for (i = 0; i < dpb->total_cnt; i++) {
         H264eDpbFrm *frm = &dpb->frames[i];
@@ -151,7 +151,7 @@ void h264e_dpb_dump_frm(H264eDpb *dpb, const char *caller)
         if (!frm->inited)
             continue;
 
-        mpp_log_f("frm slot %2d  %-4d %-3d %-3d %-3d %-3d %-4d %-3d %-3d %-2d %-3d %-3x %-3d\n",
+        mpp_log_f("frm slot %2d  %-4d %-3d %-3d %-3d %-3d %-4d %-3d %-3d %-2d %-3d %-3x %-3d %-3d\n",
                   i,
                   frm->inited,
                   frm->on_used,
@@ -164,7 +164,8 @@ void h264e_dpb_dump_frm(H264eDpb *dpb, const char *caller)
                   frm->info.is_lt_ref,
                   frm->lt_idx,
                   frm->ref_status,
-                  frm->ref_count);
+                  frm->ref_count,
+                  frm->info.temporal_id);
     }
 }
 
@@ -175,7 +176,7 @@ void h264e_dpb_dump_listX(H264eDpbFrm **list, RK_S32 count)
     for (i = 0; i < count; i++) {
         H264eDpbFrm *frm = list[i];
 
-        mpp_log_f("list slot %d   %-4d %-3d %-3d %-3d %-4d %-3d %-3d %-2d %-3d %-3x %-3d\n",
+        mpp_log_f("list slot %d   %-4d %-3d %-3d %-3d %-4d %-3d %-3d %-2d %-3d %-3x %-3d %-3d\n",
                   i,
                   frm->inited,
                   frm->on_used,
@@ -187,7 +188,8 @@ void h264e_dpb_dump_listX(H264eDpbFrm **list, RK_S32 count)
                   frm->info.is_lt_ref,
                   frm->lt_idx,
                   frm->ref_status,
-                  frm->ref_count);
+                  frm->ref_count,
+                  frm->info.temporal_id);
     }
 }
 
@@ -199,7 +201,7 @@ void h264e_dpb_dump_list(H264eDpb *dpb)
               dpb->dpb_size, dpb->st_size, dpb->lt_size);
 
     if (dpb->dpb_size) {
-        mpp_log_f("list status - init use cnt gop type idr ref lt idx sta cnt\n", dpb, dpb->total_cnt);
+        mpp_log_f("list status - init use cnt gop type idr ref lt idx sta cnt tid\n", dpb, dpb->total_cnt);
 
         h264e_dpb_dump_listX(dpb->list, dpb->dpb_size);
     }
@@ -478,7 +480,7 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req)
     h264e_dpb_dbg_f("curr %5d - gop s [%d:%d] map -> %d poc %d\n",
                     seq_idx, st_gop_cnt, st_gop_idx, st_gop_idx_wrap, poc_lsb);
 
-    h264e_dpb_dbg_f("next %5d - gop i [%d:%d] t [%d:%d] s [%d:%d] - req i %d lt %d\n",
+    h264e_dpb_dbg_f("next %5d - gop i [%d:%d] l [%d:%d] s [%d:%d] - req i %d lt %d\n",
                     dpb->seq_idx, dpb->idr_gop_cnt, dpb->idr_gop_idx,
                     dpb->lt_gop_cnt, dpb->lt_gop_idx, dpb->st_gop_cnt,
                     dpb->st_gop_idx, idr_req, lt_req);
@@ -502,6 +504,10 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req)
         frm->info.is_lt_ref = 1;
         frm->info.lt_idx = dpb->lt_ref_idx;
         frm->info.temporal_id = 0;
+
+        frm->gop_cnt = dpb->st_gop_cnt;
+        frm->gop_idx = 0;
+        frm->ref_count  = dpb->ref_cnt[0];
 
         h264e_dpb_dbg_f("lt_idx %d\n", dpb->lt_ref_idx);
 
@@ -548,6 +554,7 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req)
         dpb->curr_frm_num = dpb->next_frm_num;
 
     frm->frame_num = dpb->curr_frm_num;
+    frm->ref_frm = NULL;
 
     dpb->curr = frm;
     dpb->next_frm_num = dpb->curr_frm_num + !frm->info.is_non_ref;
@@ -565,6 +572,10 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req)
 
 H264eDpbFrm *h264e_dpb_get_refr(H264eDpbFrm *frm)
 {
+    // When force reference frame exist use it.
+    if (frm->ref_frm)
+        return frm->ref_frm;
+
     RK_S32 i;
     H264eDpbFrm *ref = NULL;
     H264eDpb *dpb = frm->dpb;
@@ -589,6 +600,83 @@ H264eDpbFrm *h264e_dpb_get_refr(H264eDpbFrm *frm)
         ref = &dpb->frames[dpb->curr_idx];
 
     return ref;
+}
+
+MPP_RET h264e_dpb_force_ref(H264eDpb *dpb, RK_S32 use_ltr, RK_S32 index)
+{
+    RK_S32 i;
+    H264eDpbFrm *frm = dpb->curr;
+    H264eDpbFrm *ref_frm = NULL;
+    RK_S32 lt_ref_idx = use_ltr ? index : -1;
+    RK_S32 st_frm_num = !use_ltr ? index : -1;
+
+    /* step 1: find the long-term reference frame */
+    // init list
+    // 1. found all short term and long term ref
+    if (use_ltr) {
+        for (i = 0; i < dpb->curr_idx; i++) {
+            H264eDpbFrm *tmp = &dpb->frames[i];
+
+            if (!tmp->on_used)
+                continue;
+
+            if (tmp->info.is_non_ref)
+                continue;
+
+            if (tmp->info.is_lt_ref && lt_ref_idx == tmp->info.lt_idx) {
+                h264e_dpb_dbg_f("found lt_ref_idx %d frm_cnt %d\n",
+                                lt_ref_idx, tmp->frm_cnt);
+                ref_frm = tmp;
+                break;
+            }
+        }
+    }
+    if (NULL == ref_frm)
+        mpp_log_f("failed to find reference frame lt_idx %d\n", lt_ref_idx);
+
+    frm->ref_frm = ref_frm;
+    frm->ref_dist = ref_frm->frm_cnt - frm->frm_cnt;
+
+    /* step 2: mark all short-term reference frame as non-referenced */
+    if (use_ltr) {
+        for (i = 0; i < dpb->curr_idx; i++) {
+            H264eDpbFrm *tmp = &dpb->frames[i];
+
+            if (!tmp->on_used)
+                continue;
+
+            if (tmp->info.is_non_ref)
+                continue;
+
+            // remove short-term reference frame in last lt_gop
+            if (!tmp->info.is_lt_ref)
+                tmp->ref_count = 0;
+        }
+    }
+
+    /* step 3: set current frame as short-term gop start */
+    dpb->st_gop_idx = 1;
+    dpb->st_gop_cnt++;
+
+    frm->gop_cnt = dpb->st_gop_cnt;
+    frm->gop_idx = 0;
+    frm->ref_count = dpb->ref_cnt[0];
+
+    // When unrefernce frame is mark for force reference LTR update frame_num
+    if (frm->info.is_non_ref) {
+        frm->info.is_non_ref = 0;
+
+        frm->frame_num++;
+        dpb->curr_frm_num++;
+        dpb->next_frm_num = dpb->curr_frm_num + 1;
+    }
+
+    frm->info.temporal_id = 0;
+
+    if (hal_h264e_debug & H264E_DBG_DPB)
+        h264e_dpb_dump_frms(dpb);
+
+    return MPP_OK;
 }
 
 static int cmp_st_list(const void *p0, const void *p1)
@@ -731,6 +819,8 @@ void h264e_dpb_build_marking(H264eDpb *dpb)
     RK_S32 i;
     H264eDpbFrm *frm = dpb->curr;
     H264eDpbFrm *ref = h264e_dpb_get_refr(frm);
+
+    h264e_dpb_dbg_f("refr %p frm_cnt %d\n", ref, ref->frm_cnt);
 
     h264e_dpb_dbg_f("curr %d gop %d idx %d ref %d ready -> frm %d gop %d idx %d\n",
                     frm->frm_cnt, frm->gop_cnt, frm->gop_idx, !frm->info.is_non_ref,

@@ -89,6 +89,9 @@ typedef struct H264eDpbFrmInfo_t {
 typedef struct  H264eDpbFrm_t {
     H264eDpb            *dpb;
 
+    // force reference frame
+    H264eDpbFrm         *ref_frm;
+
     // frame index in frames
     RK_S32              frm_cnt;
     // gop index in one gop structure
@@ -269,8 +272,9 @@ MPP_RET h264e_dpb_deinit(H264eDpb *dpb);
 MPP_RET h264e_dpb_setup_buf_size(H264eDpb *dpb, RK_U32 size[], RK_U32 count);
 MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg);
 
-H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 new_seq);
+H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req);
 H264eDpbFrm *h264e_dpb_get_refr(H264eDpbFrm *frm);
+MPP_RET h264e_dpb_force_ref(H264eDpb *dpb, RK_S32 use_ltr, RK_S32 index);
 void h264e_dpb_build_list(H264eDpb *dpb);
 void h264e_dpb_build_marking(H264eDpb *dpb);
 void h264e_dpb_curr_ready(H264eDpb *dpb);
