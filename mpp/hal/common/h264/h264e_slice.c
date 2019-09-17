@@ -481,7 +481,7 @@ MPP_RET h264e_slice_update(H264eSlice *slice, void *p)
 
     // update reorder according to current dpb status
     if (dpb->need_reorder) {
-        H264eDpbFrm *ref = h264e_dpb_get_refr(frm);
+        H264eDpbFrm *ref = frm->ref_frm;
 
         h264e_dpb_slice("reorder to frm %d gop %d idx %d\n",
                         ref->frm_cnt, ref->gop_cnt, ref->gop_idx);

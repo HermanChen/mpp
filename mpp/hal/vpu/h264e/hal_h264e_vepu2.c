@@ -227,20 +227,16 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
             h264e_dpb_setup_hier(ctx->dpb, &ctx->hier_cfg);
         }
 
-        H264eDpbFrm *frm = h264e_dpb_get_curr(ctx->dpb,
-                                              (hw_cfg->frame_type == H264E_VPU_FRAME_I));
+        MppMeta meta = mpp_frame_get_meta(enc_task->frame);
+        RK_S32 lt_ref_idx = -1;
+        H264eDpbFrmCfg frm_cfg;
 
-        {
-            MppMeta meta = mpp_frame_get_meta(enc_task->frame);
-            RK_S32 lt_ref_idx = -1;
+        mpp_meta_get_s32(meta, KEY_LONG_REF_IDX, &lt_ref_idx);
+        frm_cfg.idr_req = (hw_cfg->frame_type == H264E_VPU_FRAME_I);
+        frm_cfg.ref_to_lt_idx = lt_ref_idx;
 
-            mpp_meta_get_s32(meta, KEY_LONG_REF_IDX, &lt_ref_idx);
-            if (lt_ref_idx >= 0)
-                h264e_dpb_force_ref(ctx->dpb, 1, lt_ref_idx);
-        }
-
-
-        H264eDpbFrm *ref = h264e_dpb_get_refr(frm);
+        H264eDpbFrm *frm = h264e_dpb_get_curr(ctx->dpb, &frm_cfg);
+        H264eDpbFrm *ref = frm->ref_frm;
 
         h264e_dpb_build_list(ctx->dpb);
 
@@ -254,12 +250,11 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
         enc_task->temporal_id = frm->info.temporal_id;
 
         h264e_dpb_build_marking(ctx->dpb);
-        {
-            MppMeta meta = mpp_packet_get_meta(enc_task->packet);
-            if (meta) {
-                mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, frm->info.temporal_id);
-                mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, frm->lt_idx);
-            }
+
+        meta = mpp_packet_get_meta(enc_task->packet);
+        if (meta) {
+            mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, frm->info.temporal_id);
+            mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, frm->lt_idx);
         }
     } else {
         RK_U32 buf2_idx = ctx->frame_cnt & 1;

@@ -164,6 +164,17 @@ typedef struct H264eFrmBufGrp_t {
     H264eFrmBuf         bufs[H264E_REF_MAX];
 } H264eFrmBufGrp;
 
+typedef struct H264eDpbFrmCfg_t {
+    // request current frame to be IDR frame
+    RK_S32              idr_req;
+
+    /*
+     * request current frame use long-term reference frame as its reference frame
+     * -1   - no force long-term reference frame
+     */
+    RK_S32              ref_to_lt_idx;
+} H264eDpbFrmCfg;
+
 typedef struct H264eDpbCfg_t {
     RK_S32              poc_type;
     RK_S32              ref_frm_num;
@@ -204,7 +215,6 @@ typedef struct H264eDpb_t {
     // lt_gop   - for long-term reference group of picture in SVC mode
     RK_S32              idr_gop_cnt;
     RK_S32              idr_gop_idx;
-    RK_S32              idr_req;
     RK_S32              poc_lsb;
 
     RK_S32              st_gop_len;
@@ -214,12 +224,10 @@ typedef struct H264eDpb_t {
     RK_S32              lt_gop_len;
     RK_S32              lt_gop_cnt;
     RK_S32              lt_gop_idx;
-    RK_S32              lt_req;
 
     RK_S32              lt_ref_idx;
 
-    RK_S32              curr_frm_num;
-    RK_S32              next_frm_num;
+    RK_S32              last_frm_num;
 
     // slot counter
     RK_S32              total_cnt;
@@ -272,9 +280,7 @@ MPP_RET h264e_dpb_deinit(H264eDpb *dpb);
 MPP_RET h264e_dpb_setup_buf_size(H264eDpb *dpb, RK_U32 size[], RK_U32 count);
 MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg);
 
-H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, RK_S32 idr_req);
-H264eDpbFrm *h264e_dpb_get_refr(H264eDpbFrm *frm);
-MPP_RET h264e_dpb_force_ref(H264eDpb *dpb, RK_S32 use_ltr, RK_S32 index);
+H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg);
 void h264e_dpb_build_list(H264eDpb *dpb);
 void h264e_dpb_build_marking(H264eDpb *dpb);
 void h264e_dpb_curr_ready(H264eDpb *dpb);
