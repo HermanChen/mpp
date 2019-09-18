@@ -347,7 +347,6 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
 
         ref->change = 1;
         ref->gop_cfg_enable = 1;
-        ref->gop_cfg_mode   = 0;
 
         // default no LTR
         ref->lt_ref_interval = 0;

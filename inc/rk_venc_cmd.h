@@ -876,13 +876,6 @@ typedef struct MppEncGopRef_t {
     RK_U32 gop_cfg_enable;
 
     /*
-     * config mode for gop reference configuration
-     * 0 - Rockchip config mode
-     * 1 - Hisilicon config  mode
-     */
-    RK_U32 gop_cfg_mode;
-
-    /*
      * long-term reference frame interval is used for error recovery
      *
      * When lt_ref_interval is zero the long-term frame mode is indicated by
