@@ -397,7 +397,11 @@ void mpp_rc_init_vgop (MppTsvcRateControl* tsvc_rc)
 {
     MppRcTemporal* pTOverRc = tsvc_rc->temporal_over_rc;
     RK_S32 i = 0;
-    tsvc_rc->iRemainingBits += VGOP_SIZE * tsvc_rc->iBitsPerFrame;
+    if (abs(tsvc_rc->iRemainingBits) < 10 * VGOP_SIZE * tsvc_rc->iBitsPerFrame / 100)
+        tsvc_rc->iRemainingBits += VGOP_SIZE * tsvc_rc->iBitsPerFrame;
+    else {
+        tsvc_rc->iRemainingBits = VGOP_SIZE * tsvc_rc->iBitsPerFrame;
+    }
     tsvc_rc->iRemainingWeights = tsvc_rc->iGopNumberInVGop * WEIGHT_MULTIPLY;
 
     tsvc_rc->iFrameCodedInVGop = 0;
@@ -434,6 +438,8 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
 
         ctx->min_rate = ctx->bps_min * 1.0 / ctx->bps_target;
         ctx->max_rate = ctx->bps_max * 1.0 / ctx->bps_target;
+
+        clear_acc = 1;
     }
 
     if (change & MPP_ENC_RC_CFG_CHANGE_FPS_OUT) {
@@ -518,7 +524,11 @@ MPP_RET mpp_rc_update_user_cfg(MppRateControl *ctx, MppEncRcCfg *cfg, RK_S32 for
             kiGopSize = (1 << (cfg->tlayer_num - 1));
             n = 0;
             while (n < cfg->tlayer_num) {
-                tsvc_rc->temporal_over_rc[n].iTlayerWeight = cfg->tlayer_weight[n] / (1 << n);
+                if (n == 0) {
+                    tsvc_rc->temporal_over_rc[n].iTlayerWeight = cfg->tlayer_weight[n] / (1 << n);
+                } else {
+                    tsvc_rc->temporal_over_rc[n].iTlayerWeight = cfg->tlayer_weight[n] / (1 << (n - 1));
+                }
                 mpp_rc_dbg_tsvcrc("iTlayerWeight[%d] = %d", n, tsvc_rc->temporal_over_rc[n].iTlayerWeight);
                 ++n;
             }
@@ -663,7 +673,7 @@ MPP_RET mpp_tsvcrc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
         //  tsvc_rc->iTargetBits = MPP_CLIP3(tsvc_rc->iTargetBits, tsvc_rc->iMinBitsTl, tsvc_rc->iMaxBitsTl);
     }
 
-    mpp_rc_dbg_tsvcrc("tsvc_rc->iRemainingBits = %d tsvc_rc->iTargetBits= %d ", tsvc_rc->iRemainingBits, tsvc_rc->iTargetBits);
+    mpp_rc_dbg_tsvcrc("tsvc_rc->iRemainingBits = %d tsvc_rc->iTargetBits= %d t_over_rc->iTlayerWeight = %d", tsvc_rc->iRemainingBits, tsvc_rc->iTargetBits, t_over_rc->iTlayerWeight);
     tsvc_rc->iRemainingWeights -= t_over_rc->iTlayerWeight;
 
 //    if(TemporalId > 0)
@@ -849,12 +859,12 @@ MPP_RET mpp_tsvcrc_update_hw_result(MppRateControl *ctx, RcHalResult *result)
     tsvc_rc->iLastDiffBit[tsvc_rc->iFrameCodedInVGop] = tsvc_rc->iTargetBits - tsvc_rc->iFrameDqBits;
     tsvc_rc->iFrameCodedInVGop++;
     tsvc_rc->iframe_num++;
+    tsvc_rc->iTotal_bit += tsvc_rc->iFrameDqBits;
     if (tsvc_rc->iFrameCodedInVGop >= VGOP_SIZE) {
         tsvc_rc->iFrameCodedInVGop = 0;
         for (i = 0; i < tsvc_rc->tlayer_num; i++) {
             ov_rc = &tsvc_rc->temporal_over_rc[i];
-            mpp_rc_dbg_tsvcrc("layer[%d] ratio %d", i, ov_rc->iGopBitsDq * 100 / (tsvc_rc->iBitsPerFrame * VGOP_SIZE));
-            mpp_rc_dbg_tsvcrc("layer[%d] total ratio %d", i, ov_rc->iTotalBits * 100 / (tsvc_rc->iframe_num * tsvc_rc->iBitsPerFrame));
+            mpp_rc_dbg_tsvcrc("layer[%d] total ratio %d", i, ov_rc->iTotalBits * 100 / tsvc_rc->iTotal_bit);
         }
     }
     tsvc_rc->iRemainingBits -= tsvc_rc->iFrameDqBits;

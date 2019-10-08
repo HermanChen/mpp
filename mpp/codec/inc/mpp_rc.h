@@ -186,6 +186,7 @@ typedef struct MppTsvcRateControl_s {
     RK_S32   bEnableFrameSkip;
     RK_S32   uiTemporalId;
     RK_S32   iframe_num;
+    RK_U64   iTotal_bit;
 } MppTsvcRateControl;
 
 

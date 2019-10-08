@@ -111,7 +111,8 @@ void h264e_vpu_rc_calPfrmqp(H264eHalContext *ctx, H264eHwCfg *hw_cfg)
             } else {
                 hw_cfg->qp  = hw_cfg->qp_prev - 1;
             }
-            hw_cfg->qp  = MPP_MIN(PreMeanQp, hw_cfg->qp);
+            if (PreMeanQp > 0)
+                hw_cfg->qp  = MPP_MIN(PreMeanQp, hw_cfg->qp);
         }
     } else {
         ratio2 = (PrePicBits - hw_cfg->pre_target_bit) * 100 / hw_cfg->pre_target_bit;
@@ -120,8 +121,8 @@ void h264e_vpu_rc_calPfrmqp(H264eHalContext *ctx, H264eHwCfg *hw_cfg)
         hw_cfg->qp = MPP_MIN(hw_cfg->qp, 51);
     }
 
-    if ((PreMeanQp - hw_cfg->qp_prev) > 5) {
-        hw_cfg->qp = hw_cfg->qp + 1;
+    if (PreMeanQp > 0 && (PreMeanQp - hw_cfg->qp_prev) > 5) {
+        hw_cfg->qp = hw_cfg->qp_prev + 1;
     }
 }
 
@@ -150,14 +151,14 @@ void h264e_vpu_tsvc_rc_calqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg 
         iTlLast = svc_rc->iTlOfFrames[iLastIdxCodecInVGop];
         iDeltaQpTemporal = svc_rc->uiTemporalId - iTlLast;
         if (0 == iTlLast && svc_rc->uiTemporalId > 0)
-            iDeltaQpTemporal += 3;
+            iDeltaQpTemporal += 4;
         else if (0 == svc_rc->uiTemporalId && iTlLast > 0)
             iDeltaQpTemporal -= 3;
         hw_cfg->qp += iDeltaQpTemporal;
         if (svc_rc->iQp[svc_rc->iFrameCodedInVGop] > 0)
             hw_cfg->qp = (hw_cfg->qp + svc_rc->iQp[svc_rc->iFrameCodedInVGop]) >> 1;
     }
-    mpp_log("tsvc temporalid %d targetbit %d config qp %d", svc_rc->uiTemporalId, rc_syn->bit_target, hw_cfg->qp);
+    // mpp_log("tsvc temporalid %d targetbit %d config qp %d", svc_rc->uiTemporalId, rc_syn->bit_target, hw_cfg->qp);
 }
 
 MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
@@ -282,21 +283,37 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
         }
         tmp = axb_div_c(bits_per_pic, 256, srcPrm);
     }
-
-    hw_cfg->target_error[0] = -tmp * 3;
-    hw_cfg->delta_qp[0] = -3;
-    hw_cfg->target_error[1] = -tmp * 2;
-    hw_cfg->delta_qp[1] = -2;
-    hw_cfg->target_error[2] = -tmp * 1;
-    hw_cfg->delta_qp[2] = -1;
-    hw_cfg->target_error[3] = tmp * 1;
-    hw_cfg->delta_qp[3] = 0;
-    hw_cfg->target_error[4] = tmp * 2;
-    hw_cfg->delta_qp[4] = 1;
-    hw_cfg->target_error[5] = tmp * 3;
-    hw_cfg->delta_qp[5] = 2;
-    hw_cfg->target_error[6] = tmp * 4;
-    hw_cfg->delta_qp[6] = 3;
+    if (ctx->tsvc_rc.tlayer_num > 1) {
+        hw_cfg->target_error[0] = -tmp * 3;
+        hw_cfg->delta_qp[0] = -3;
+        hw_cfg->target_error[1] = -tmp * 2;
+        hw_cfg->delta_qp[1] = -2;
+        hw_cfg->target_error[2] = -tmp * 1;
+        hw_cfg->delta_qp[2] = -1;
+        hw_cfg->target_error[3] = tmp * 1;
+        hw_cfg->delta_qp[3] = 0;
+        hw_cfg->target_error[4] = tmp * 2;
+        hw_cfg->delta_qp[4] = 1;
+        hw_cfg->target_error[5] = tmp * 3;
+        hw_cfg->delta_qp[5] = 4;
+        hw_cfg->target_error[6] = tmp * 4;
+        hw_cfg->delta_qp[6] = 7;
+    } else {
+        hw_cfg->target_error[0] = -tmp * 3;
+        hw_cfg->delta_qp[0] = -3;
+        hw_cfg->target_error[1] = -tmp * 2;
+        hw_cfg->delta_qp[1] = -2;
+        hw_cfg->target_error[2] = -tmp * 1;
+        hw_cfg->delta_qp[2] = -1;
+        hw_cfg->target_error[3] = tmp * 1;
+        hw_cfg->delta_qp[3] = 0;
+        hw_cfg->target_error[4] = tmp * 2;
+        hw_cfg->delta_qp[4] = 1;
+        hw_cfg->target_error[5] = tmp * 3;
+        hw_cfg->delta_qp[5] = 2;
+        hw_cfg->target_error[6] = tmp * 4;
+        hw_cfg->delta_qp[6] = 3;
+    }
 
     for (i = 0; i < CTRL_LEVELS; i++) {
         tmp =  hw_cfg->cp_target[i];
@@ -562,12 +579,21 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
         int flag = 1;
         int cnt = 1;
         int re_qp = hw_cfg->qp;
+        if (tsvc_rc->uiTemporalId <= 1) {
+            cnt = 2;
+        }
         do {
             pic_bits =  fb->out_strm_size * 8;
-            mpp_log("pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
-            if (abs(pic_bits - rc_syn->bit_target) >= rc_syn->bit_target * 20 / 100) {
-                ratio = (pic_bits - rc_syn->bit_target) * 100 / rc_syn->bit_target;
-                ratio = MPP_MIN(ratio, 200);
+            //mpp_log("pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
+            if (pic_bits - rc_syn->bit_target >= rc_syn->bit_target * 20 / 100
+                || pic_bits - rc_syn->bit_target <= -pic_bits * 20 / 100) {
+
+                if (pic_bits - rc_syn->bit_target > 0) {
+                    ratio = (pic_bits - rc_syn->bit_target) * 100 / rc_syn->bit_target;
+                } else {
+                    ratio = (pic_bits - rc_syn->bit_target) * 100 / pic_bits;
+                }
+                ratio = MPP_MIN(ratio, 300);
                 if (rc_syn->type == INTRA_FRAME) {
                     dealt_qp = (ratio * 6) / 100 + 1;
                 } else {
@@ -584,13 +610,17 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
                             flag = 0;
                         }
                         if (tsvc_rc->uiTemporalId <= 4) {
-                            ratio = MPP_MIN(ratio, 200);
-                            dealt_qp = (ratio * 3) / 100 + flag;
+                            ratio = MPP_MIN(ratio, 300);
+                            ratio = MPP_MAX(ratio, -200);
+                            if (tsvc_rc->uiTemporalId <= 2)
+                                dealt_qp = (ratio * 3) / 100 + flag;
+                            else
+                                dealt_qp = (ratio * 4) / 100 + flag;
                         }
                     }
                 }
                 if (dealt_qp != 0) {
-                    mpp_log("reencode dealt_qp %d", dealt_qp);
+                    //mpp_log("reencode dealt_qp %d", dealt_qp);
                     send(hal, (RK_U32 *)reg_out, dealt_qp);
                     feedback(fb, reg_out);
                     task->enc.length = fb->out_strm_size;
