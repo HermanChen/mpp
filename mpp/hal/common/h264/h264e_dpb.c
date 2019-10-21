@@ -542,7 +542,7 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg)
             tmp->on_used = 0;
             tmp->info.is_non_ref = 1;
             tmp->info.is_lt_ref = 0;
-            frm->info.temporal_id = 0;
+            tmp->info.temporal_id = 0;
             tmp->ref_status = 0;
             tmp->ref_count = 0;
             tmp->marked_unref = 0;
