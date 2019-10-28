@@ -1472,6 +1472,7 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
 
     // if B slice or field are found disable detection
     if (B_SLICE == currSlice->slice_type || currSlice->field_pic_flag) {
+        mpp_log_f("disable tsvc detection for field mode\n");
         gop->disable_detection = 1;
         return ;
     }
@@ -1484,6 +1485,7 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
     RK_S32 gop_idx = gop->gop_idx;
     RK_S32 cur_poc = p_Vid->dec_pic->poc;
     RK_S32 dif_gop_pos = 0;
+    RK_S32 ref_is_lt = 0;
 
     H264D_DBG(H264D_DBG_GOP_INFO, "frm %4d gop %3d %3d poc %d type %d\n", gop->frm_cnt,
               gop->gop_cnt, gop->gop_idx, cur_poc, currSlice->slice_type);
@@ -1558,6 +1560,7 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
                 }
             } break;
             default : {
+                mpp_log_f("disable tsvc detection for non 1/2 reorder idc\n");
                 goto DISABLE_DETECTION;
             } break;
             }
@@ -1565,11 +1568,14 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
 
         pic_num_idc = currSlice->modification_of_pic_nums_idc[LIST_0][1];
         // if there is more reorder cmd disable detection
-        if (pic_num_idc != 3)
+        if (pic_num_idc != 3) {
+            mpp_log_f("disable tsvc detection for more than one refer frame\n");
             goto DISABLE_DETECTION;
+        }
     }
 
     RK_S32 ref_poc = p_Dec->dpb_info[ref->dpb_idx].TOP_POC;
+    ref_is_lt = p_Dec->dpb_info[ref->dpb_idx].is_long_term;
 
     H264D_DBG(H264D_DBG_GOP_INFO, "ref %4d: valid %d dpb_idx %d poc %d\n",
               cur_poc, ref->valid, ref->dpb_idx, ref_poc);
@@ -1647,8 +1653,18 @@ UPDATE_GOP_INFO:
     } else if (gop->curr_max_ref_diff == 8) {
         gop->curr_tsvc_mode = 3;
         gop->curr_tid_set = gop->tsvc4_tid;
-    } else
-        goto DISABLE_DETECTION;
+    } else {
+        if (ref_is_lt) {
+            /* on long-term case keep previous tsvc mode */
+            gop->curr_tsvc_mode = gop->last_tsvc_mode;
+            gop->curr_max_ref_diff = gop->last_max_ref_diff;
+        } else {
+            mpp_log_f("disable tsvc detection for max ref diff %d\n",
+                      gop->curr_max_ref_diff);
+            goto DISABLE_DETECTION;
+        }
+    }
+    gop->last_tsvc_mode = gop->curr_tsvc_mode;
 
     gop->curr_tid = gop->curr_tid_set[gop_idx & MAX_DEC_GOP_MASK];
     if (gop->curr_tid == 0 && gop->curr_err_skip)
@@ -1683,7 +1699,6 @@ UPDATE_GOP_INFO:
 
 DISABLE_DETECTION:
     gop->disable_detection = 1;
-    mpp_log_f("disable tsvc detection\n");
     return ;
 }
 
