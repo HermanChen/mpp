@@ -1465,8 +1465,10 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
 {
     H264_DecCtx_t *p_Dec = currSlice->p_Dec;
     h264_gop_ctx_t *gop = &p_Dec->gopctx;
+    H264_SPS_t *sps = currSlice->active_sps;
     H264dErrCtx_t *p_err = &p_Dec->errctx;
 
+    gop->disable_detection = (sps->max_num_ref_frames == 2);
     if (gop->disable_detection)
         return ;
 
