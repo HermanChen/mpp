@@ -390,8 +390,8 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[4].temporal_id  = 1;
             gop[4].ref_idx      = 0;
             gop[4].is_non_ref   = 0;
-            gop[4].is_lt_ref    = 1;
-            gop[4].lt_idx       = 1;
+            gop[4].is_lt_ref    = 0;
+            gop[4].lt_idx       = 0;
 
             gop[5].temporal_id  = 3;
             gop[5].ref_idx      = 4;
@@ -417,7 +417,7 @@ MPP_RET test_mpp_setup(MpiEncTestData *p)
             gop[8].is_lt_ref    = 1;
             gop[8].lt_idx       = 0;
 
-            ref->max_lt_ref_cnt = 2;
+            ref->max_lt_ref_cnt = 1;
         } else if (p->gop_mode == 2) {
             // tsvc3
             //     /-> P1      /-> P3
@@ -615,6 +615,7 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
         mpp_frame_set_fmt(frame, p->fmt);
         mpp_frame_set_eos(frame, p->frm_eos);
 
+#if 0
         if (p->ref.max_lt_ref_cnt) {
             // force idr as reference every 15 frames
             RK_S32 quotient = p->frame_count / 15;
@@ -632,6 +633,7 @@ MPP_RET test_mpp_run(MpiEncTestData *p)
             } else
                 mpp_frame_set_meta(frame, NULL);
         }
+#endif
 
         if (p->fp_input && feof(p->fp_input))
             mpp_frame_set_buffer(frame, NULL);

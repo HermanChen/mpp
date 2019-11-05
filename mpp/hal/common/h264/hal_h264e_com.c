@@ -523,7 +523,7 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     /* extra slot with pyramid so that we don't have to override the
      * order of forgetting old pictures */
     sps->vui.i_max_dec_frame_buffering =
-        sps->i_num_ref_frames = ctx->usr_hier ? 8 : 1;
+        sps->i_num_ref_frames = ctx->usr_hier ? 2 : 1;
 
     sps->keyframe_max_interval = rc->gop;
     if (sps->keyframe_max_interval == 1) {

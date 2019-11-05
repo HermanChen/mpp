@@ -331,8 +331,8 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             gop[4].temporal_id  = 1;
             gop[4].ref_idx      = 0;
             gop[4].is_non_ref   = 0;
-            gop[4].is_lt_ref    = 1;
-            gop[4].lt_idx       = 1;
+            gop[4].is_lt_ref    = 0;
+            gop[4].lt_idx       = 0;
 
             gop[5].temporal_id  = 3;
             gop[5].ref_idx      = 4;
@@ -358,7 +358,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             gop[8].is_lt_ref    = 1;
             gop[8].lt_idx       = 0;
 
-            ref.max_lt_ref_cnt  = 2;
+            ref.max_lt_ref_cnt  = 1;
         } break;
         default : {
             mpp_err("invalid tsvcx flag %d\n", tsvcx_en);

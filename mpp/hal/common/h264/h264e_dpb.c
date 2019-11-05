@@ -340,7 +340,7 @@ MPP_RET h264e_dpb_setup_hier(H264eDpb *dpb, MppEncHierCfg *cfg)
         }
 
         if (!info->status.is_non_ref && info->status.is_lt_ref) {
-            if (cfg->max_lt_ref_cnt)
+            if (cfg->lt_ref_interval)
                 mpp_err_f("Can NOT use both lt_ref_interval and gop_info lt_ref at the same time!\n ");
 
             if (info->status.lt_idx > dpb->max_lt_idx) {
@@ -934,6 +934,7 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
                     }
                 }
             }
+            dpb->lt_size++;
         } else {
             // normal gop position swap and decrease ref_cnt
             for (i = 0; i < dpb->max_st_cnt; i++) {
@@ -944,6 +945,7 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
                     break;
                 }
             }
+            dpb->st_size++;
         }
 
         mpp_assert(insert >= 0);
@@ -955,6 +957,53 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
                         dpb->curr_idx, insert);
 
         h264e_dpb_frm_swap(dpb, insert, dpb->curr_idx);
+
+        if (dpb->dpb_size > dpb->ref_frm_num) {
+            RK_S32 ref_frm_num = dpb->ref_frm_num;
+
+            h264e_dpb_dbg_f("sliding window for dpb size %d max %d\n",
+                            dpb->dpb_size, ref_frm_num);
+
+            if (dpb->dpb_size > ref_frm_num) {
+                RK_S32 lt_size = dpb->lt_size;
+
+                mpp_assert(lt_size <= ref_frm_num);
+
+                while (dpb->dpb_size > ref_frm_num) {
+                    RK_S32 small_poc = 0x7fffffff;
+                    H264eDpbFrm *unref = NULL;
+
+                    h264e_dpb_dbg_f("st %d lt %d max %d\n",
+                                    dpb->st_size, dpb->lt_size, ref_frm_num);
+
+                    for (i = 0; i < dpb->max_st_cnt; i++) {
+                        H264eDpbFrm *tmp = &dpb->frames[i];
+
+                        if (tmp->on_used && tmp->poc < small_poc) {
+                            unref = tmp;
+                            small_poc = tmp->poc;
+                        }
+                    }
+
+                    if (unref) {
+                        h264e_dpb_dbg_f("removing poc %d\n", unref->poc);
+
+                        unref->on_used = 0;
+                        unref->info.is_non_ref = 1;
+                        unref->info.is_lt_ref = 0;
+                        unref->info.temporal_id = 0;
+                        unref->ref_status = 0;
+                        unref->ref_count = 0;
+                        unref->marked_unref = 0;
+
+                        dpb->dpb_size--;
+                        dpb->st_size--;
+                    } else
+                        break;
+                }
+            }
+            mpp_assert(dpb->dpb_size <= ref_frm_num);
+        }
     } else
         dpb->curr->on_used = 0;
 
