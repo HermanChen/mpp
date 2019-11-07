@@ -690,7 +690,9 @@ MPP_RET h264d_callback(void *decoder, void *errinfo)
         RK_U32 *p_regs = ctx->regs;
         HalDecTask *task_dec = (HalDecTask *)ctx->task;
 
-        mpp_buf_slot_get_prop(p_Dec->frame_slots, task_dec->output, SLOT_FRAME_PTR, &mframe);
+        if (task_dec->output >= 0)
+            mpp_buf_slot_get_prop(p_Dec->frame_slots, task_dec->output, SLOT_FRAME_PTR, &mframe);
+
         if (mframe) {
             h264_gop_ctx_t *gop = &p_Dec->gopctx;
             RK_U32 task_err = task_dec->flags.parse_err || task_dec->flags.ref_err;
