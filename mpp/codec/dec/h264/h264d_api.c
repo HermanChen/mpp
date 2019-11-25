@@ -707,7 +707,9 @@ MPP_RET h264d_callback(void *decoder, void *errinfo)
             mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, task_dec->temp_id);
             mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, task_dec->lt_ref_idx);
 
-            gop->gop_err[task_dec->gop_idx] = (ctx->hard_err || task_err) ? 1 : 0;
+            if (!gop->disable_detection)
+                gop->gop_err[task_dec->gop_idx] = (ctx->hard_err || task_err) ? 1 : 0;
+
             H264D_DBG(H264D_DBG_CALLBACK, "[CALLBACK] g_no=%d, out_idx=%d, dpberr=%d, harderr=%d, ref_flag=%d, errinfo=%d, discard=%d\n",
                       p_Dec->p_Vid->g_framecnt, task_dec->output, task_err, ctx->hard_err, task_dec->flags.used_for_ref,
                       mpp_frame_get_errinfo(mframe), mpp_frame_get_discard(mframe));
