@@ -256,6 +256,7 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
             mpp_meta_set_s32(meta, KEY_TEMPORAL_ID, frm->info.temporal_id);
             mpp_meta_set_s32(meta, KEY_LONG_REF_IDX, frm->lt_idx);
         }
+        hw_cfg->frame_num = frm->frame_num;
     } else {
         RK_U32 buf2_idx = ctx->frame_cnt & 1;
 

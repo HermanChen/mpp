@@ -1467,29 +1467,24 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
     h264_gop_ctx_t *gop = &p_Dec->gopctx;
     H264_SPS_t *sps = currSlice->active_sps;
     H264dErrCtx_t *p_err = &p_Dec->errctx;
+    struct h264d_video_ctx_t *p_Vid = p_Dec->p_Vid;
+    RK_S32 cur_poc = p_Vid->dec_pic->poc;
+    //RK_S32 gop_idx = gop->gop_idx;
+    RK_S32 gop_idx = cur_poc % 8;
+    RK_S32 i;
 
-    // set default temporal id and gop index to zero
-    p_Dec->in_task->temp_id = 0;
-    p_Dec->in_task->gop_idx = 0;
-
-    gop->disable_detection = !(sps->max_num_ref_frames == 2);
-    if (gop->disable_detection)
-        return ;
+    gop->disable_detection = (sps->max_num_ref_frames == 1);
+    if (gop->disable_detection) {
+        //mpp_log_f("disable tsvc for num_ref_frame %d\n", sps->max_num_ref_frames);
+        goto DISABLE_DETECTION;
+    }
 
     // if B slice or field are found disable detection
     if (B_SLICE == currSlice->slice_type || currSlice->field_pic_flag) {
-        mpp_log_f("disable tsvc detection for field mode\n");
-        gop->disable_detection = 1;
-        return ;
+        //mpp_log_f("disable tsvc for B slice or field mode\n");
+        goto DISABLE_DETECTION;
     }
 
-    // if not first mb return
-    if (currSlice->start_mb_nr)
-        return ;
-
-    struct h264d_video_ctx_t *p_Vid = p_Dec->p_Vid;
-    RK_S32 gop_idx = gop->gop_idx;
-    RK_S32 cur_poc = p_Vid->dec_pic->poc;
     RK_S32 dif_gop_pos = 0;
     RK_S32 ref_is_lt = 0;
 
@@ -1520,7 +1515,6 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
     if (currSlice->ref_pic_list_reordering_flag[LIST_0]) {
         // only detect one reorder cmd for TSVC
         struct h264_dpb_info_t *dpb_info = p_Dec->dpb_info;
-        RK_S32 i;
         RK_S32 curr_frm_num = currSlice->frame_num;
         RK_S32 pic_num_idc = currSlice->modification_of_pic_nums_idc[LIST_0][0];
         RK_S32 abs_diff_pic_num = currSlice->abs_diff_pic_num_minus1[LIST_0][0] + 1;
@@ -1583,11 +1577,9 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
     RK_S32 ref_poc = p_Dec->dpb_info[ref->dpb_idx].TOP_POC;
     ref_is_lt = p_Dec->dpb_info[ref->dpb_idx].is_long_term;
 
-    H264D_DBG(H264D_DBG_GOP_INFO, "ref %4d: valid %d dpb_idx %d poc %d\n",
-              cur_poc, ref->valid, ref->dpb_idx, ref_poc);
-
-    RK_S32 i;
     //RK_S32 cur_idx = gop->gop_idx;
+    H264D_DBG(H264D_DBG_GOP_INFO, "cur %4d -> ref %4d: valid %d dpb_idx %d\n",
+            cur_poc, ref_poc, ref->valid, ref->dpb_idx);
 
     // zero diff poc for unknown poc diff
     for (i = 0; i < gop->gop_len; i++) {
@@ -1597,6 +1589,10 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
                 dif_gop_pos += gop->gop_size;
 
             gop->curr_err_skip = gop->gop_err[i];
+
+            H264D_DBG(H264D_DBG_GOP_INFO, "ref diff %4d err %d\n",
+                      dif_gop_pos, gop->gop_err[i]);
+
             break;
         }
     }
@@ -1634,6 +1630,15 @@ UPDATE_GOP_INFO:
 
     // start checking gop mode
     // check normal mode first
+    if (sps->max_num_ref_frames == 2) {
+        gop->curr_tsvc_mode = 3;
+        gop->last_tsvc_mode = 3;
+        gop->curr_tid_set = gop->tsvc4_tid;
+        gop->gop_size = 8;
+        gop->gop_len = 8;
+        goto SETUP_TID;
+    }
+
     if (!gop_idx) {
         // only update when gop size is full filled
         // NOTE: use gop->gop_idx is for last gop size length
@@ -1672,7 +1677,8 @@ UPDATE_GOP_INFO:
     }
     gop->last_tsvc_mode = gop->curr_tsvc_mode;
 
-    gop->curr_tid = gop->curr_tid_set[gop_idx & MAX_DEC_GOP_MASK];
+SETUP_TID:
+    gop->curr_tid = gop->curr_tid_set[gop_idx];
     if (gop->curr_tid == 0 && gop->curr_err_skip)
         gop->curr_err_report = 1;
     else
@@ -1687,10 +1693,13 @@ UPDATE_GOP_INFO:
     p_Dec->in_task->temp_id = gop->curr_tid;
     p_Dec->in_task->gop_idx = gop->curr_gop_idx;
 
+    //mpp_log_f("verr poc %3d gop idx %d tid %d\n", cur_poc, gop->curr_gop_idx, gop->curr_tid);
+
     H264D_DBG(H264D_DBG_GOP_INFO, "%d max ref diff last %d curr %d tsvc%d tid %d\n", gop->frm_cnt,
               gop->last_max_ref_diff, gop->curr_max_ref_diff, gop->curr_tsvc_mode + 1, gop->curr_tid);
 
     gop->frm_cnt++;
+#if 0
     gop_idx++;
     if (gop_idx >= gop->gop_size) {
         gop_idx = 0;
@@ -1700,10 +1709,15 @@ UPDATE_GOP_INFO:
         gop->gop_len++;
 
     gop->gop_idx = gop_idx;
+#endif
 
     return ;
 
 DISABLE_DETECTION:
+    // set default temporal id and gop index to zero
+    p_Dec->in_task->temp_id = 0;
+    p_Dec->in_task->gop_idx = 0;
+
     gop->disable_detection = 1;
     return ;
 }

@@ -528,12 +528,13 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg)
     if (idr_req) {
         frm->info.is_idr = 1;
         frm->info.is_intra = 1;
+        frm->info.is_non_ref = 0;
         frm->frame_num = 0;
         frm->poc = 0;
         frm->info.temporal_id = 0;
 
-        // init to 0
-        dpb->last_frm_num = 0;
+        // init to 1
+        dpb->last_frm_num = 1;
 
         // mmco 5 mark all reference frame to be non-referenced
         for (i = 0; i < dpb->curr_idx; i++) {
@@ -552,6 +553,9 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg)
         dpb->lt_size = 0;
         dpb->st_size = 0;
         dpb->unref_cnt = 0;
+
+        //mpp_log_f("frame_num %d last %d ref %d\n", frm->frame_num,
+        //        dpb->last_frm_num, !frm->info.is_non_ref);
 
         return frm;
     }
@@ -653,10 +657,12 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg)
         frm->info.temporal_id = 0;
     }
 
+    frm->frame_num = dpb->last_frm_num;
     if (!frm->info.is_non_ref)
         dpb->last_frm_num++;
 
-    frm->frame_num = dpb->last_frm_num;
+    //mpp_log_f("frame_num %d last %d ref %d\n", frm->frame_num,
+    //          dpb->last_frm_num, !frm->info.is_non_ref);
 
     if (hal_h264e_debug & H264E_DBG_DPB)
         h264e_dpb_dump_frms(dpb);

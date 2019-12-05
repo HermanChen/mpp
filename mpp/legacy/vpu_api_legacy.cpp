@@ -177,8 +177,9 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
                                  MPP_ENC_H264_CFG_CHANGE_ENTROPY |
                                  MPP_ENC_H264_CFG_CHANGE_QP_LIMIT;
         codec_cfg->h264.stream_type = 1;
-        codec_cfg->h264.profile  = profile;
-        codec_cfg->h264.level    = level;
+        codec_cfg->h264.svc     = 0;
+        codec_cfg->h264.profile = profile;
+        codec_cfg->h264.level   = level;
         codec_cfg->h264.entropy_coding_mode  = cabac_en;
         codec_cfg->h264.cabac_init_idc  = 0;
 
@@ -315,12 +316,6 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             gop[2].is_non_ref   = 0;
             gop[2].is_lt_ref    = 0;
             gop[2].lt_idx       = 0;
-
-            gop[3].temporal_id  = 3;
-            gop[3].ref_idx      = 2;
-            gop[3].is_non_ref   = 1;
-            gop[3].is_lt_ref    = 0;
-            gop[3].lt_idx       = 0;
 
             gop[3].temporal_id  = 3;
             gop[3].ref_idx      = 2;
@@ -920,6 +915,7 @@ RK_S32 VpuApiLegacy::decode(VpuCodecContext *ctx, VideoPacket_t *pkt, DecoderOut
         } else {
             VPU_FRAME *vframe = (VPU_FRAME *)aDecOut->data;
             MppBuffer buf = mpp_frame_get_buffer(mframe);
+            RK_S32 temporal_id = -1;
 
             setup_VPU_FRAME_from_mpp_frame(vframe, mframe);
 
@@ -933,14 +929,18 @@ RK_S32 VpuApiLegacy::decode(VpuCodecContext *ctx, VideoPacket_t *pkt, DecoderOut
                     aDecOut->size = 0;
                 }
             }
+
+            MppMeta meta = mpp_frame_get_meta(mframe);
+
+            mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+
             if (vpu_api_debug & VPU_API_DBG_OUTPUT) {
-                mpp_log("get one frame pts %lld, fd 0x%x, poc %d, errinfo %x, discard %d, eos %d, verr %d",
-                        aDecOut->timeUs,
-                        ((buf) ? (mpp_buffer_get_fd(buf)) : (-1)),
+                mpp_log("get one frame poc %3d, eos %d, verr [%d %d] tid %d",
                         mpp_frame_get_poc(mframe),
-                        mpp_frame_get_errinfo(mframe),
+                        mpp_frame_get_eos(mframe),
                         mpp_frame_get_discard(mframe),
-                        mpp_frame_get_eos(mframe), vframe->ErrorInfo);
+                        mpp_frame_get_errinfo(mframe),
+                        temporal_id);
             }
 
             /*
@@ -1028,6 +1028,7 @@ RK_S32 VpuApiLegacy::decode_getoutframe(DecoderOut_t *aDecOut)
         aDecOut->size = 0;
     } else {
         MppBuffer buf = mpp_frame_get_buffer(mframe);
+        RK_S32 temporal_id = -1;
 
         setup_VPU_FRAME_from_mpp_frame(vframe, mframe);
 
@@ -1045,14 +1046,18 @@ RK_S32 VpuApiLegacy::decode_getoutframe(DecoderOut_t *aDecOut)
                 aDecOut->nFlags |= VPU_API_EOS_STREAM_REACHED;
             }
         }
+
+        MppMeta meta = mpp_frame_get_meta(mframe);
+
+        mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
+
         if (vpu_api_debug & VPU_API_DBG_OUTPUT) {
-            mpp_log("get one frame pts %lld, fd 0x%x, poc %d, errinfo %x, discard %d, eos %d, verr %d",
-                    aDecOut->timeUs,
-                    ((buf) ? (mpp_buffer_get_fd(buf)) : (-1)),
+            mpp_log("get one frame poc %3d, eos %d, verr [%d %d] tid %d",
                     mpp_frame_get_poc(mframe),
-                    mpp_frame_get_errinfo(mframe),
+                    mpp_frame_get_eos(mframe),
                     mpp_frame_get_discard(mframe),
-                    mpp_frame_get_eos(mframe), vframe->ErrorInfo);
+                    mpp_frame_get_errinfo(mframe),
+                    temporal_id);
         }
 
         /*
