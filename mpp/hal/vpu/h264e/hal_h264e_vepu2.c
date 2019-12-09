@@ -728,6 +728,7 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         }
 
         memset(ctx->dst_buf, 0, ctx->buf_size);
+        memset(ctx->src_buf, 0, ctx->buf_size);
         dst_buf = ctx->dst_buf;
         buf_size = ctx->buf_size;
 
@@ -773,11 +774,9 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         tail_tmp = tail_byte;
 
         while (!(tail_tmp & 1) && tail_0bit < 8) {
-            h264e_dpb_slice("tail_byte %02x bit %d\n", tail_tmp, tail_0bit);
             tail_tmp >>= 1;
             tail_0bit++;
         }
-        h264e_dpb_slice("tail_byte %02x bit %d\n", tail_tmp, tail_0bit);
 
         mpp_assert(tail_0bit < 8);
 
@@ -785,7 +784,7 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         diff_size = h264e_slice_move(dst_buf, ctx->src_buf,
                                      sw_len_bit, hw_len_bit, len);
 
-        h264e_dpb_slice("tail 0x%02x %d hw_len_bit %d sw_len_bit %d len %d hw_len_byte %d sw_len_byte %d diff %d\n",
+        h264e_dpb_slice("tail 0x%02x %d hw_hdr %d sw_hdr %d len %d hw_byte %d sw_byte %d diff %d\n",
                         tail_byte, tail_0bit, hw_len_bit, sw_len_bit, len, hw_len_byte, sw_len_byte, diff_size);
 
         if (ctx->slice.entropy_coding_mode) {
@@ -808,9 +807,16 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
 
             dst_buf[new_len] = 0;
 
-            h264e_dpb_slice("frm %d len %d bit hw %d sw %d byte hw %d sw %d diff %d -> %d\n",
-                            ctx->dpb->curr->frm_cnt, len, hw_len_bit, sw_len_bit,
+            h264e_dpb_slice("frm %4d %c len %d bit hw %d sw %d byte hw %d sw %d diff %d -> %d\n",
+                            ctx->dpb->curr->frm_cnt, (ctx->slice.idr_flag ? 'I' : 'P'),
+                            len, hw_len_bit, sw_len_bit,
                             hw_len_byte, sw_len_byte, diff_size, new_len);
+
+            h264e_dpb_slice("%02x %02x %02x %02x -> %02x %02x %02x %02x\n",
+                            ctx->src_buf[len - 4], ctx->src_buf[len - 3],
+                            ctx->src_buf[len - 2], ctx->src_buf[len - 1],
+                            dst_buf[new_len - 4], dst_buf[new_len - 3],
+                            dst_buf[new_len - 2], dst_buf[new_len - 1]);
             new_len += prefix_byte;
             memcpy(p, ctx->dst_buf, new_len);
             p[new_len] = 0;

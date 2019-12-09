@@ -546,7 +546,7 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
     if (hw_cfg->hw_type == H264E_RKV)
         sps->i_poc_type = 0;
     else // VPU
-        sps->i_poc_type = (ctx->usr_hier) ? 0 : 2;
+        sps->i_poc_type = 2;
 
     if ( sps->i_poc_type == 0  ) {
         RK_S32 max_delta_poc = (i_bframe + 2) * (!!i_bframe_pyramid + 1) * 2;

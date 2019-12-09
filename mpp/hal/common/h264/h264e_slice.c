@@ -225,7 +225,7 @@ RK_S32 h264e_slice_write(H264eSlice *slice, void *p, RK_U32 size)
     }
 
     // Force to use poc type 0 here
-    {
+    if (0) {
         RK_S32 pic_order_cnt_lsb = slice->pic_order_cnt_lsb;
         RK_S32 max_poc_lsb = (1 << slice->log2_max_poc_lsb) - 1;
 
