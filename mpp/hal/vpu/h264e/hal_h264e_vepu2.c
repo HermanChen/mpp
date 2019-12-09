@@ -175,7 +175,7 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
     }
 
     if (ctx->hdr_status & HDR_NEED_UPDATED) {
-        mpp_log("update header\n");
+        // mpp_log("update header\n");
         mpp_assert(hw_cfg->frame_type == H264E_VPU_FRAME_I);
         mpp_assert(!(ctx->hdr_status & HDR_UPDATED));
 
@@ -203,7 +203,7 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
         ctx->hdr_status &= ~HDR_NEED_UPDATED;
         ctx->hdr_status |= HDR_UPDATED;
 
-        mpp_log("header length %d\n", offset);
+        // mpp_log("header length %d\n", offset);
     }
 
     mb_w = (prep->width  + 15) / 16;

@@ -589,9 +589,11 @@ H264eDpbFrm *h264e_dpb_get_curr(H264eDpb *dpb, H264eDpbFrmCfg *cfg)
             }
         }
 
-        if (frm->ref_frm == frm)
+        if (frm->ref_frm == frm) {
             mpp_err_f("failed to find refernce frame %d for current frame %d dist %d\n",
                       ref_frm_cnt, frm_cnt, ref_dist);
+            h264e_dpb_dump_frms(dpb);
+        }
     } else {
         // force long-term reference frame as reference frame case
         /* step 1: find the long-term reference frame */
@@ -985,6 +987,8 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
                     for (i = 0; i < dpb->max_st_cnt; i++) {
                         H264eDpbFrm *tmp = &dpb->frames[i];
 
+                        h264e_dpb_dbg_f("frm cnt %d poc %d\n", tmp->frm_cnt, tmp->poc);
+
                         if (tmp->on_used && tmp->poc < small_poc) {
                             unref = tmp;
                             small_poc = tmp->poc;
@@ -992,7 +996,8 @@ void h264e_dpb_curr_ready(H264eDpb *dpb)
                     }
 
                     if (unref) {
-                        h264e_dpb_dbg_f("removing poc %d\n", unref->poc);
+                        h264e_dpb_dbg_f("removing cnt %d poc %d\n",
+                                        unref->frm_cnt, unref->poc);
 
                         unref->on_used = 0;
                         unref->info.is_non_ref = 1;

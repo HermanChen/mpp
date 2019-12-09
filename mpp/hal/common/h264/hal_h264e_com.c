@@ -553,7 +553,8 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
         sps->i_log2_max_poc_lsb = Sw_log2_max_pic_order_cnt_lsb_minus4 + 4;
         while ( (1 << sps->i_log2_max_poc_lsb) <= max_delta_poc * 2  )
             sps->i_log2_max_poc_lsb++;
-
+    } else {
+        sps->i_log2_max_poc_lsb = 16;
     }
 
     sps->vui.b_vui = 1;
