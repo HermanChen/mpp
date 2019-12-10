@@ -127,7 +127,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     prep_cfg->width      = width;
     prep_cfg->height     = height;
     prep_cfg->hor_stride = MPP_ALIGN(width, 16);
-    prep_cfg->ver_stride = MPP_ALIGN(height, 16);
+    prep_cfg->ver_stride = MPP_ALIGN(height, 8);
     prep_cfg->format     = fmt;
     ret = mpi->control(mpp_ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
     if (ret) {
