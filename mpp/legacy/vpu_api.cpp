@@ -286,7 +286,7 @@ RK_S32 vpu_open_context(VpuCodecContext **ctx)
     vpu_api_dbg_func("enter\n");
 
     mpp_env_get_u32("use_original", &force_original, 0);
-    mpp_env_get_u32("use_mpp_mode", &force_mpp_mode, 0);
+    mpp_env_get_u32("use_mpp_mode", &force_mpp_mode, 1);
 
     /* if there is no original vpuapi library force to mpp path */
     if (check_orign_vpu())
