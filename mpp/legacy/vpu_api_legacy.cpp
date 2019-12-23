@@ -1099,7 +1099,7 @@ RK_S32 VpuApiLegacy::encode(VpuCodecContext *ctx, EncInputStream_t *aEncInStrm, 
     RK_U32 width        = ctx->width;
     RK_U32 height       = ctx->height;
     RK_U32 hor_stride   = MPP_ALIGN(width,  16);
-    RK_U32 ver_stride   = MPP_ALIGN(height, 16);
+    RK_U32 ver_stride   = MPP_ALIGN(height, 8);
     MppFrame    frame   = NULL;
     MppPacket   packet  = NULL;
     MppBuffer   pic_buf = NULL;
@@ -1335,7 +1335,7 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
     RK_U32 width        = ctx->width;
     RK_U32 height       = ctx->height;
     RK_U32 hor_stride   = MPP_ALIGN(width,  16);
-    RK_U32 ver_stride   = MPP_ALIGN(height, 16);
+    RK_U32 ver_stride   = MPP_ALIGN(height, 8);
     RK_S64 pts          = aEncInStrm->timeUs;
     RK_S32 fd           = aEncInStrm->bufPhyAddr;
     RK_U32 size         = aEncInStrm->size;
