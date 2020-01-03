@@ -110,7 +110,7 @@ static RK_U32 vp9_ver_align(RK_U32 val)
 
 static RK_U32 vp9_hor_align(RK_U32 val)
 {
-    return MPP_ALIGN(val, 256) | 256;
+    return MPP_ALIGN(val, 128);
 }
 
 static MPP_RET hal_vp9d_alloc_res(hal_vp9_context_t *reg_cxt)
