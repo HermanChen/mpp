@@ -394,7 +394,7 @@ static int copy_align_raw_buffer_to_dest(RK_U8 *dst, RK_U8 *src, RK_U32 width,
     RK_U8 *src_buf = src;
     RK_U32 row = 0;
     RK_U32 hor_stride = MPP_ALIGN(width, 16);
-    RK_U32 ver_stride = MPP_ALIGN(height, 16);
+    RK_U32 ver_stride = MPP_ALIGN(height, 8);
     RK_U8 *dst_u = dst_buf + hor_stride * ver_stride;
     RK_U8 *dst_v = dst_u + hor_stride * ver_stride / 4;
     switch (fmt) {
@@ -1404,6 +1404,9 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
             ret = MPP_ERR_NULL_PTR;
             goto FUNC_RET;
         }
+
+        /* create larger buffer for hardware access */
+        ver_stride = MPP_ALIGN(height, 16);
         if (format >= MPP_FMT_YUV420SP && format < MPP_FMT_YUV_BUTT) {
             align_size = hor_stride * ver_stride * 3 / 2;
         } else if (format >= MPP_FMT_RGB565 && format < MPP_FMT_BGR888) {
