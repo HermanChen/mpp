@@ -1236,6 +1236,7 @@ typedef struct h264_gop_ctx_t {
     RK_S32      *tsvc2_tid;
     RK_S32      *tsvc3_tid;
     RK_S32      *tsvc4_tid;
+    RK_S32      *tsvc4_ref;
 } h264_gop_ctx_t;
 
 //!< decoder video parameter

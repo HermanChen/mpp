@@ -249,6 +249,10 @@ static RK_S32 tsvc4_tid[MAX_DEC_GOP_SIZE] = {
     0, 3, 2, 3, 1, 3, 2, 3,
 };
 
+static RK_S32 tsvc4_ref[MAX_DEC_GOP_SIZE] = {
+    0, 0, 0, 2, 0, 4, 4, 6,
+};
+
 static MPP_RET init_dec_ctx(H264_DecCtx_t *p_Dec)
 {
     RK_U32 i = 0;
@@ -293,6 +297,9 @@ static MPP_RET init_dec_ctx(H264_DecCtx_t *p_Dec)
         gop->tsvc2_tid = tsvc2_tid;
         gop->tsvc3_tid = tsvc3_tid;
         gop->tsvc4_tid = tsvc4_tid;
+        gop->tsvc4_ref = tsvc4_ref;
+        for (i = 0; i < MPP_ARRAY_ELEMS(gop->gop_err); i++)
+            gop->gop_err[i] = 1;
     }
 
 __RETURN:

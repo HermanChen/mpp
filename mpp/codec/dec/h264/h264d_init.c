@@ -520,7 +520,7 @@ __FAILED:
 static MPP_RET check_dpb_discontinuous(H264_StorePic_t *p_last, H264_StorePic_t *dec_pic, H264_SLICE_t *currSlice)
 {
     MPP_RET ret = MPP_ERR_UNKNOW;
-#if 1
+#if 0
     if (p_last && dec_pic && (dec_pic->slice_type != I_SLICE)) {
         RK_U32 error_flag = 0;
 
@@ -534,6 +534,10 @@ static MPP_RET check_dpb_discontinuous(H264_StorePic_t *p_last, H264_StorePic_t 
         H264D_DBG(H264D_DBG_DISCONTINUOUS, "[discontinuous] last_slice=%d, cur_slice=%d, last_fnum=%d, cur_fnum=%d, last_poc=%d, cur_frm_num=%d",
                   p_last->slice_type, dec_pic->slice_type, p_last->frame_num, dec_pic->frame_num, p_last->poc, dec_pic->poc);
     }
+#else
+    (void)p_last;
+    (void)dec_pic;
+    (void)currSlice;
 #endif
     return ret = MPP_OK;
 }
@@ -1461,6 +1465,34 @@ static void check_refer_picture_lists(H264_SLICE_t *currSlice)
     }
 }
 
+static void dump_gop_status(h264_gop_ctx_t *gop)
+{
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop ref %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_ref[0],  gop->gop_ref[1],  gop->gop_ref[2],  gop->gop_ref[3],
+              gop->gop_ref[4],  gop->gop_ref[5],  gop->gop_ref[6],  gop->gop_ref[7],
+              gop->gop_ref[8],  gop->gop_ref[9],  gop->gop_ref[10], gop->gop_ref[11],
+              gop->gop_ref[12], gop->gop_ref[13], gop->gop_ref[14], gop->gop_ref[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop poc %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_poc[0],  gop->gop_poc[1],  gop->gop_poc[2],  gop->gop_poc[3],
+              gop->gop_poc[4],  gop->gop_poc[5],  gop->gop_poc[6],  gop->gop_poc[7],
+              gop->gop_poc[8],  gop->gop_poc[9],  gop->gop_poc[10], gop->gop_poc[11],
+              gop->gop_poc[12], gop->gop_poc[13], gop->gop_poc[14], gop->gop_poc[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop dif %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_dif[0],  gop->gop_dif[1],  gop->gop_dif[2],  gop->gop_dif[3],
+              gop->gop_dif[4],  gop->gop_dif[5],  gop->gop_dif[6],  gop->gop_dif[7],
+              gop->gop_dif[8],  gop->gop_dif[9],  gop->gop_dif[10], gop->gop_dif[11],
+              gop->gop_dif[12], gop->gop_dif[13], gop->gop_dif[14], gop->gop_dif[15]);
+
+    H264D_DBG(H264D_DBG_GOP_INFO, "gop err %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
+              gop->gop_err[0],  gop->gop_err[1],  gop->gop_err[2],  gop->gop_err[3],
+              gop->gop_err[4],  gop->gop_err[5],  gop->gop_err[6],  gop->gop_err[7],
+              gop->gop_err[8],  gop->gop_err[9],  gop->gop_err[10], gop->gop_err[11],
+              gop->gop_err[12], gop->gop_err[13], gop->gop_err[14], gop->gop_err[15]);
+
+}
+
 static void check_gop_pattern(H264_SLICE_t *currSlice)
 {
     H264_DecCtx_t *p_Dec = currSlice->p_Dec;
@@ -1469,8 +1501,9 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
     H264dErrCtx_t *p_err = &p_Dec->errctx;
     struct h264d_video_ctx_t *p_Vid = p_Dec->p_Vid;
     RK_S32 cur_poc = p_Vid->dec_pic->poc;
-    //RK_S32 gop_idx = gop->gop_idx;
-    RK_S32 gop_idx = cur_poc % 8;
+    RK_S32 gop_idx = -1;
+    RK_S32 dif_gop_pos = 0;
+    RK_S32 ref_is_lt = 0;
     RK_S32 i;
 
     gop->disable_detection = (sps->max_num_ref_frames == 1);
@@ -1485,11 +1518,52 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
         goto DISABLE_DETECTION;
     }
 
-    RK_S32 dif_gop_pos = 0;
-    RK_S32 ref_is_lt = 0;
+    H264D_DBG(H264D_DBG_GOP_INFO, "frm %4d gop %3d %3d poc %d type %d ref %d\n",
+              gop->frm_cnt, gop->gop_cnt, gop->gop_idx, cur_poc,
+              currSlice->slice_type, currSlice->nal_reference_idc);
 
-    H264D_DBG(H264D_DBG_GOP_INFO, "frm %4d gop %3d %3d poc %d type %d\n", gop->frm_cnt,
-              gop->gop_cnt, gop->gop_idx, cur_poc, currSlice->slice_type);
+    // step 1. check gop mode
+    // step 2. check gop index
+    // step 3. find reference frame
+    // step 4. check reference frame status
+    // step 5. clear current frame status
+    // step 6. mark tid and gop index and done
+    if (sps->max_num_ref_frames == 2) {
+        /* on tsvc4 mode use poc to find the gop index directly */
+        gop->curr_tsvc_mode = 3;
+        gop->last_tsvc_mode = 3;
+        gop->curr_tid_set = gop->tsvc4_tid;
+        gop->gop_size = 8;
+        gop->gop_len = 8;
+
+        gop_idx = cur_poc % 8;
+
+        if (I_SLICE != currSlice->slice_type) {
+            RK_S32 ref_gop_idx = gop->tsvc4_ref[gop_idx];
+
+            gop->curr_err_skip = gop->gop_err[ref_gop_idx];
+            gop->gop_err[gop_idx] = 0;
+        } else {
+            gop->curr_err_skip = 0;
+
+            gop->gop_err[0] = 0;
+            for (i = 1; i < (RK_S32)MPP_ARRAY_ELEMS(gop->gop_err); i++)
+                gop->gop_err[i] = 1;
+
+            if (gop->frm_cnt)
+                gop->gop_cnt++;
+        }
+
+        gop->curr_gop_idx = gop_idx;
+        gop->gop_ref[gop_idx] = currSlice->nal_reference_idc > 0;
+        gop->gop_poc[gop_idx] = cur_poc;
+        gop->gop_dif[gop_idx] = dif_gop_pos;
+        gop->gop_err[gop_idx] = gop->curr_err_skip;
+
+        goto SETUP_TID;
+    }
+
+    // TODO: check tid and gop mode first
 
     gop->gop_err[gop_idx] = 0;
     gop->curr_err_skip = 0;
@@ -1502,6 +1576,8 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
         if (gop->frm_cnt)
             gop->gop_cnt++;
 
+        for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(gop->gop_err); i++)
+            gop->gop_err[i] = 1;
         goto UPDATE_GOP_INFO;
     }
 
@@ -1604,41 +1680,6 @@ UPDATE_GOP_INFO:
     gop->gop_dif[gop_idx] = dif_gop_pos;
     gop->gop_err[gop_idx] = gop->curr_err_skip;
 
-    H264D_DBG(H264D_DBG_GOP_INFO, "gop ref %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
-              gop->gop_ref[0],  gop->gop_ref[1],  gop->gop_ref[2],  gop->gop_ref[3],
-              gop->gop_ref[4],  gop->gop_ref[5],  gop->gop_ref[6],  gop->gop_ref[7],
-              gop->gop_ref[8],  gop->gop_ref[9],  gop->gop_ref[10], gop->gop_ref[11],
-              gop->gop_ref[12], gop->gop_ref[13], gop->gop_ref[14], gop->gop_ref[15]);
-
-    H264D_DBG(H264D_DBG_GOP_INFO, "gop poc %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
-              gop->gop_poc[0],  gop->gop_poc[1],  gop->gop_poc[2],  gop->gop_poc[3],
-              gop->gop_poc[4],  gop->gop_poc[5],  gop->gop_poc[6],  gop->gop_poc[7],
-              gop->gop_poc[8],  gop->gop_poc[9],  gop->gop_poc[10], gop->gop_poc[11],
-              gop->gop_poc[12], gop->gop_poc[13], gop->gop_poc[14], gop->gop_poc[15]);
-
-    H264D_DBG(H264D_DBG_GOP_INFO, "gop dif %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
-              gop->gop_dif[0],  gop->gop_dif[1],  gop->gop_dif[2],  gop->gop_dif[3],
-              gop->gop_dif[4],  gop->gop_dif[5],  gop->gop_dif[6],  gop->gop_dif[7],
-              gop->gop_dif[8],  gop->gop_dif[9],  gop->gop_dif[10], gop->gop_dif[11],
-              gop->gop_dif[12], gop->gop_dif[13], gop->gop_dif[14], gop->gop_dif[15]);
-
-    H264D_DBG(H264D_DBG_GOP_INFO, "gop err %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d %3d\n",
-              gop->gop_err[0],  gop->gop_err[1],  gop->gop_err[2],  gop->gop_err[3],
-              gop->gop_err[4],  gop->gop_err[5],  gop->gop_err[6],  gop->gop_err[7],
-              gop->gop_err[8],  gop->gop_err[9],  gop->gop_err[10], gop->gop_err[11],
-              gop->gop_err[12], gop->gop_err[13], gop->gop_err[14], gop->gop_err[15]);
-
-    // start checking gop mode
-    // check normal mode first
-    if (sps->max_num_ref_frames == 2) {
-        gop->curr_tsvc_mode = 3;
-        gop->last_tsvc_mode = 3;
-        gop->curr_tid_set = gop->tsvc4_tid;
-        gop->gop_size = 8;
-        gop->gop_len = 8;
-        goto SETUP_TID;
-    }
-
     if (!gop_idx) {
         // only update when gop size is full filled
         // NOTE: use gop->gop_idx is for last gop size length
@@ -1699,17 +1740,8 @@ SETUP_TID:
               gop->last_max_ref_diff, gop->curr_max_ref_diff, gop->curr_tsvc_mode + 1, gop->curr_tid);
 
     gop->frm_cnt++;
-#if 0
-    gop_idx++;
-    if (gop_idx >= gop->gop_size) {
-        gop_idx = 0;
-        gop->gop_cnt++;
-    }
-    if (gop->gop_len < gop->gop_size)
-        gop->gop_len++;
 
-    gop->gop_idx = gop_idx;
-#endif
+    dump_gop_status(gop);
 
     return ;
 
