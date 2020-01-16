@@ -650,7 +650,7 @@ MPP_RET h264d_parse(void *decoder, HalDecTask *in_task)
     }
     in_task->valid = 1;
 
-    {
+    if (p_Dec->p_Vid->last_pic) {
         // save lt_ref_idx to current task
         H264_StorePic_t *pic = p_Dec->p_Vid->last_pic;
         RK_S32 lt_ref_idx = -1;
