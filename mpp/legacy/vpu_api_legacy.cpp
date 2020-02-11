@@ -87,7 +87,7 @@ static MppFrameFormat vpu_pic_type_remap_to_mpp(EncInputPictureType type)
 
 static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
                                    MppCodingType coding, MppFrameFormat fmt,
-                                   EncParameter_t *cfg)
+                                   EncParameter_t *cfg, EncParameter_t *old)
 {
     MPP_RET ret = MPP_OK;
     MppEncCfgSet set;
@@ -110,6 +110,7 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     RK_S32 cabac_en = cfg->enableCabac;
     RK_S32 tsvcx_en = (cfg->cabacInitIdc >> 16) & 0xffff;
     RK_S32 rc_mode  = cfg->rc_mode;
+    RK_U32 change   = 0;
 
     mpp_log("setup encoder rate control config:\n");
     mpp_log("width %4d height %4d format %d\n", width, height, fmt);
@@ -122,51 +123,83 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     mpp_assert(height);
     mpp_assert(qp);
 
-    prep_cfg->change     = MPP_ENC_PREP_CFG_CHANGE_INPUT |
-                           MPP_ENC_PREP_CFG_CHANGE_FORMAT;
-    prep_cfg->width      = width;
-    prep_cfg->height     = height;
-    prep_cfg->hor_stride = MPP_ALIGN(width, 16);
-    prep_cfg->ver_stride = MPP_ALIGN(height, 8);
-    prep_cfg->format     = fmt;
-    ret = mpi->control(mpp_ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
-    if (ret) {
-        mpp_err("setup preprocess config failed ret %d\n", ret);
-        goto RET;
+    if (NULL == old) {
+        change = MPP_ENC_PREP_CFG_CHANGE_INPUT | MPP_ENC_PREP_CFG_CHANGE_FORMAT;
+    } else {
+        if (old->width != width || old->height != height)
+            change |= MPP_ENC_PREP_CFG_CHANGE_INPUT;
+        if (old->format != fmt)
+            change |= MPP_ENC_PREP_CFG_CHANGE_INPUT | MPP_ENC_PREP_CFG_CHANGE_FORMAT;
     }
 
-    rc_cfg->change  = MPP_ENC_RC_CFG_CHANGE_ALL;
-    if (rc_mode == 0) {
+    if (change) {
+        prep_cfg->change     = change;
+        prep_cfg->width      = width;
+        prep_cfg->height     = height;
+        prep_cfg->hor_stride = MPP_ALIGN(width, 16);
+        prep_cfg->ver_stride = MPP_ALIGN(height, 8);
+        prep_cfg->format     = fmt;
+        ret = mpi->control(mpp_ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
+        if (ret) {
+            mpp_err("setup preprocess config failed ret %d\n", ret);
+            goto RET;
+        }
+    }
+
+    change = 0;
+    if (NULL == old)
+        change  = MPP_ENC_RC_CFG_CHANGE_ALL;
+    else {
+        if (cfg->rc_mode != old->rc_mode)
+            change |= MPP_ENC_RC_CFG_CHANGE_RC_MODE;
+
+        if (cfg->bitRate != old->bitRate)
+            change |= MPP_ENC_RC_CFG_CHANGE_BPS;
+
+        if (cfg->framerate != old->framerate)
+            change |= MPP_ENC_RC_CFG_CHANGE_FPS_IN;
+
+        if (cfg->framerateout != old->framerateout)
+            change |= MPP_ENC_RC_CFG_CHANGE_FPS_OUT;
+
+        if (cfg->intraPicRate != old->intraPicRate)
+            change |= MPP_ENC_RC_CFG_CHANGE_GOP;
+    }
+
+    if (change) {
+        rc_cfg->change  = change;
+        if (rc_mode == 0) {
         /* 0 - constant qp mode: fixed qp */
         rc_cfg->rc_mode     = MPP_ENC_RC_MODE_VBR;
         rc_cfg->quality     = MPP_ENC_RC_QUALITY_CQP;
         rc_cfg->bps_target  = -1;
         rc_cfg->bps_max     = -1;
         rc_cfg->bps_min     = -1;
-    } else if (rc_mode == 1) {
+        } else if (rc_mode == 1) {
         /* 1 - constant bitrate: small bps range */
         rc_cfg->rc_mode     = MPP_ENC_RC_MODE_CBR;
         rc_cfg->quality     = MPP_ENC_RC_QUALITY_MEDIUM;
         rc_cfg->bps_target  = bps;
         rc_cfg->bps_max     = bps * 17 / 16;
         rc_cfg->bps_min     = bps * 15 / 16;
-    } else {
-        mpp_err("invalid vpu rc mode %d\n", rc_mode);
-    }
+        } else {
+            mpp_err("invalid vpu rc mode %d\n", rc_mode);
+        }
 
-    /* fix input / output frame rate */
-    rc_cfg->fps_in_flex     = 0;
-    rc_cfg->fps_in_num      = fps_in;
-    rc_cfg->fps_in_denorm   = 1;
-    rc_cfg->fps_out_flex    = 0;
-    rc_cfg->fps_out_num     = fps_out;
-    rc_cfg->fps_out_denorm  = 1;
-    rc_cfg->gop             = igop;
-    rc_cfg->skip_cnt        = 0;
-    ret = mpi->control(mpp_ctx, MPP_ENC_SET_RC_CFG, rc_cfg);
-    if (ret) {
-        mpp_err("setup rate control config failed ret %d\n", ret);
-        goto RET;
+        /* fix input / output frame rate */
+        rc_cfg->fps_in_flex     = 0;
+        rc_cfg->fps_in_num      = fps_in;
+        rc_cfg->fps_in_denorm   = 1;
+        rc_cfg->fps_out_flex    = 0;
+        rc_cfg->fps_out_num     = fps_out;
+        rc_cfg->fps_out_denorm  = 1;
+        rc_cfg->gop             = igop;
+        rc_cfg->skip_cnt        = 0;
+        ret = mpi->control(mpp_ctx, MPP_ENC_SET_RC_CFG, rc_cfg);
+        if (ret) {
+            mpp_err("setup rate control config failed ret %d\n", ret);
+            goto RET;
+        }
     }
 
     codec_cfg->coding = coding;
@@ -564,7 +597,7 @@ RK_S32 VpuApiLegacy::init(VpuCodecContext *ctx, RK_U8 *extraData, RK_U32 extra_s
         format = vpu_pic_type_remap_to_mpp((EncInputPictureType)param->format);
 
         memcpy(&enc_cfg, param, sizeof(enc_cfg));
-        vpu_api_set_enc_cfg(mpp_ctx, mpi, coding, format, param);
+        vpu_api_set_enc_cfg(mpp_ctx, mpi, coding, format, param, NULL);
 
         mpi->control(mpp_ctx, MPP_ENC_GET_EXTRA_INFO, &pkt);
 
@@ -1129,6 +1162,7 @@ RK_S32 VpuApiLegacy::encode(VpuCodecContext *ctx, EncInputStream_t *aEncInStrm, 
     if (fd_input < 0) {
         fd_input = is_valid_dma_fd(fd);
     }
+
     if (fd_input) {
         MppBufferInfo   inputCommit;
 
@@ -1379,6 +1413,7 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
     if (fd_input < 0) {
         fd_input = is_valid_dma_fd(fd);
     }
+
     if (fd_input) {
         MppBufferInfo   inputCommit;
 
@@ -1538,9 +1573,11 @@ RK_S32 VpuApiLegacy::control(VpuCodecContext *ctx, VPU_API_CMD cmd, void *param)
     } break;
     case VPU_API_ENC_SETCFG : {
         MppCodingType coding = (MppCodingType)ctx->videoCoding;
+        MPP_RET ret = vpu_api_set_enc_cfg(mpp_ctx, mpi, coding, format,
+                                          (EncParameter_t *)param, &enc_cfg);
 
         memcpy(&enc_cfg, param, sizeof(enc_cfg));
-        return vpu_api_set_enc_cfg(mpp_ctx, mpi, coding, format, &enc_cfg);
+        return ret;
     } break;
     case VPU_API_ENC_GETCFG : {
         memcpy(param, &enc_cfg, sizeof(enc_cfg));
