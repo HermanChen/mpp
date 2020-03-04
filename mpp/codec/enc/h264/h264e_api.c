@@ -243,23 +243,32 @@ MPP_RET h264e_config(void *ctx, RK_S32 cmd, void *param)
     } break;
     case MPP_ENC_SET_GOPREF : {
         MppEncGopRef *ref = (MppEncGopRef *)param;
-        MppEncRcCfg *rc = &p->cfg->rc;
         RK_U32 i = 0;
         RK_S32 max_temporal_id = 0;
+        RK_U32 disable_layer_rc = 0;
+
         for (i = 0; i < ref->ref_gop_len + 1; i++) {
             if (max_temporal_id < ref->gop_info[i].temporal_id) {
                 max_temporal_id = ref->gop_info[i].temporal_id;
             }
         }
-        rc->tlayer_num = max_temporal_id + 1;
-        for (i = 0; i <= (RK_U32)max_temporal_id; i++) {
-            rc->tlayer_weight[i] = ref->tlayer_weight[i];
+
+        mpp_env_get_u32("disable_layer_rc", &disable_layer_rc, 0);
+
+        if (!disable_layer_rc) {
+            MppEncRcCfg *rc = &p->cfg->rc;
+
+            rc->tlayer_num = max_temporal_id + 1;
+            for (i = 0; i <= (RK_U32)max_temporal_id; i++) {
+                rc->tlayer_weight[i] = ref->tlayer_weight[i];
+            }
+            if (rc->tlayer_num > 1) {
+                mpp_rc_init_func(1, &p->pfRc);
+            }
+
+            mpp_log("SET_RC_HIER_REF rc->tlayer_num %d", rc->tlayer_num);
+            rc->change |= MPP_ENC_RC_CFG_CHANGE_TSVC;
         }
-        if (rc->tlayer_num > 1) {
-            mpp_rc_init_func(1, &p->pfRc);
-        }
-        mpp_log("SET_RC_HIER_REF rc->tlayer_num %d", rc->tlayer_num);
-        rc->change |= MPP_ENC_RC_CFG_CHANGE_TSVC;
     } break;
 
     default:
