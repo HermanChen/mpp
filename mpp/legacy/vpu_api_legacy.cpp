@@ -31,6 +31,7 @@
 #include "mpp_frame.h"
 
 RK_U32 vpu_api_debug = 0;
+static RK_U32 avaya_surface_en = 0;
 
 static MppFrameFormat vpu_pic_type_remap_to_mpp(EncInputPictureType type)
 {
@@ -139,6 +140,15 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
         prep_cfg->hor_stride = MPP_ALIGN(width, 16);
         prep_cfg->ver_stride = MPP_ALIGN(height, 8);
         prep_cfg->format     = fmt;
+
+        if (avaya_surface_en) {
+            prep_cfg->hor_stride = width;
+            prep_cfg->ver_stride = height;
+        }
+
+        vpu_api_dbg_func("w:h= %dx%d, hor:ver = %dx%d\n",
+                         prep_cfg->width, prep_cfg->height,
+                         prep_cfg->hor_stride, prep_cfg->ver_stride);
         ret = mpi->control(mpp_ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
         if (ret) {
             mpp_err("setup preprocess config failed ret %d\n", ret);
@@ -561,6 +571,9 @@ RK_S32 VpuApiLegacy::init(VpuCodecContext *ctx, RK_U8 *extraData, RK_U32 extra_s
         mpp_err("found invalid context input");
         return MPP_ERR_NULL_PTR;
     }
+
+    mpp_env_get_u32("avaya.video.encode.surface", &avaya_surface_en, 0);
+    vpu_api_dbg_func("avaya.video.encode.surface %d", avaya_surface_en);
 
     if (CODEC_DECODER == ctx->codecType) {
         type = MPP_CTX_DEC;
@@ -1391,6 +1404,12 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
         mpp_err_f("mpp_frame_init failed\n");
         goto FUNC_RET;
     }
+
+    if (avaya_surface_en) {
+        hor_stride = width;
+        ver_stride = height;
+    }
+    vpu_api_dbg_func("dhq, sendframe w:h=%dx%d, size =0x%08x\n", ctx->width, ctx->height, aEncInStrm->size);
 
     mpp_frame_set_width(frame, width);
     mpp_frame_set_height(frame, height);
