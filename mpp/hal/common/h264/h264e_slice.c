@@ -504,12 +504,16 @@ MPP_RET h264e_slice_update(H264eSlice *slice, void *p)
                             frm->frame_num, ref->frame_num,
                             slice->abs_diff_pic_num_minus1);
         }
-
-        dpb->need_reorder = 0;
+        if (slice->last_slice_flag)
+            dpb->need_reorder = 0;
     }
 
     // remove frame if they are not used any more
     // NOTE: only add marking on reference frame
+    if (!slice->first_slice_flag) {
+        return MPP_OK;
+    }
+
     INIT_LIST_HEAD(&slice->mmco);
     slice->mmco_cnt = 0;
 

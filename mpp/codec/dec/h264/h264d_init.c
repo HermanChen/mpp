@@ -1655,7 +1655,7 @@ static void check_gop_pattern(H264_SLICE_t *currSlice)
 
     //RK_S32 cur_idx = gop->gop_idx;
     H264D_DBG(H264D_DBG_GOP_INFO, "cur %4d -> ref %4d: valid %d dpb_idx %d\n",
-            cur_poc, ref_poc, ref->valid, ref->dpb_idx);
+              cur_poc, ref_poc, ref->valid, ref->dpb_idx);
 
     // zero diff poc for unknown poc diff
     for (i = 0; i < gop->gop_len; i++) {

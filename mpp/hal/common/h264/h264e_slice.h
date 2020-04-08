@@ -94,6 +94,8 @@ typedef struct H264eSlice_t {
     RK_U32      disable_deblocking_filter_idc;
     RK_S32      slice_alpha_c0_offset_div2;
     RK_S32      slice_beta_offset_div2;
+    RK_S32      first_slice_flag;
+    RK_S32      last_slice_flag;
 
     RK_S32      idr_flag;
     RK_U32      idr_pic_id;
