@@ -727,6 +727,10 @@ MPP_RET mpp_enc_control(MppEnc ctx, MpiCmd cmd, void *param)
         enc_dbg_ctrl("set ctu qp\n");
         ret = mpp_hal_control(enc->hal, cmd, param);
     } break;
+    case MPP_ENC_SET_SPLIT: {
+        ret = mpp_hal_control(enc->hal, cmd, param);
+        mpp_log("MPP_ENC_SET_SPLIT \n");
+    } break;
     case MPP_ENC_SET_GOPREF: {
         enc_dbg_ctrl("idr request\n");
         ret = enc_impl_proc_cfg(enc->impl, MPP_ENC_SET_IDR_FRAME, NULL);

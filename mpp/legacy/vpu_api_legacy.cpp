@@ -179,19 +179,19 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     if (change) {
         rc_cfg->change  = change;
         if (rc_mode == 0) {
-        /* 0 - constant qp mode: fixed qp */
-        rc_cfg->rc_mode     = MPP_ENC_RC_MODE_VBR;
-        rc_cfg->quality     = MPP_ENC_RC_QUALITY_CQP;
-        rc_cfg->bps_target  = -1;
-        rc_cfg->bps_max     = -1;
-        rc_cfg->bps_min     = -1;
+            /* 0 - constant qp mode: fixed qp */
+            rc_cfg->rc_mode     = MPP_ENC_RC_MODE_VBR;
+            rc_cfg->quality     = MPP_ENC_RC_QUALITY_CQP;
+            rc_cfg->bps_target  = -1;
+            rc_cfg->bps_max     = -1;
+            rc_cfg->bps_min     = -1;
         } else if (rc_mode == 1) {
-        /* 1 - constant bitrate: small bps range */
-        rc_cfg->rc_mode     = MPP_ENC_RC_MODE_CBR;
-        rc_cfg->quality     = MPP_ENC_RC_QUALITY_MEDIUM;
-        rc_cfg->bps_target  = bps;
-        rc_cfg->bps_max     = bps * 17 / 16;
-        rc_cfg->bps_min     = bps * 15 / 16;
+            /* 1 - constant bitrate: small bps range */
+            rc_cfg->rc_mode     = MPP_ENC_RC_MODE_CBR;
+            rc_cfg->quality     = MPP_ENC_RC_QUALITY_MEDIUM;
+            rc_cfg->bps_target  = bps;
+            rc_cfg->bps_max     = bps * 17 / 16;
+            rc_cfg->bps_min     = bps * 15 / 16;
         } else {
             mpp_err("invalid vpu rc mode %d\n", rc_mode);
         }
@@ -1665,6 +1665,9 @@ RK_S32 VpuApiLegacy::control(VpuCodecContext *ctx, VPU_API_CMD cmd, void *param)
     } break;
     case VPU_API_ENC_SET_VEPU22_ROI: {
         mpicmd = MPP_ENC_SET_ROI_CFG;
+    } break;
+    case VPU_API_ENC_SET_SLICE_SPLIT: {
+        mpicmd = MPP_ENC_SET_SPLIT;
     } break;
     default: {
     } break;
