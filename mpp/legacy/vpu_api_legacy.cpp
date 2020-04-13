@@ -273,6 +273,10 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             //  /
             // P0--------> P2
             ref.ref_gop_len     = 2;
+            ref.tlayer_weight[0] = 1400;
+            ref.tlayer_weight[1] = 600;
+            ref.tlayer_weight[2] = 0;
+            ref.tlayer_weight[3] = 0;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -300,6 +304,10 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             //  //
             // P0/---------------------> P4
             ref.ref_gop_len     = 4;
+            ref.tlayer_weight[0] = 1000;
+            ref.tlayer_weight[1] = 500;
+            ref.tlayer_weight[2] = 500;
+            ref.tlayer_weight[3] = 0;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
@@ -341,6 +349,10 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
             // ///
             // P0 ------------------------------------------------> P8
             ref.ref_gop_len     = 8;
+            ref.tlayer_weight[0] = 800;
+            ref.tlayer_weight[1] = 400;
+            ref.tlayer_weight[2] = 400;
+            ref.tlayer_weight[3] = 400;
 
             gop[0].temporal_id  = 0;
             gop[0].ref_idx      = 0;
