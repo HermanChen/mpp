@@ -559,7 +559,7 @@ MPP_RET h264e_set_sps(H264eHalContext *ctx, H264eSps *sps)
 
     sps->vui.b_vui = 1;
 
-    sps->b_gaps_in_frame_num_value_allowed = 1;
+    sps->b_gaps_in_frame_num_value_allowed = 0;
     sps->b_frame_mbs_only = !(b_interlaced || b_fake_interlaced);
     if ( !sps->b_frame_mbs_only  )
         sps->i_mb_height = ( sps->i_mb_height + 1  ) & ~1;
