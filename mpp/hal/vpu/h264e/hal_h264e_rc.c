@@ -483,7 +483,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
             slice_num = 4;
         }
         RK_U32 slice_mb_rows =  (mb_per_col + slice_num - 1) / slice_num;
-        hw_cfg->slice_size_mb_rows  =   MPP_CLIP3(slice_mb_rows, 2, 127);
+        hw_cfg->slice_size_mb_rows  =   mpp_clip(slice_mb_rows, 2, 127);
         slice_num = (mb_per_col + hw_cfg->slice_size_mb_rows - 1) / (hw_cfg->slice_size_mb_rows);
         h264e_hal_dbg(H264E_DBG_RC, "slice_num %d hw_cfg->slice_size_mb_rows = %d", slice_num, hw_cfg->slice_size_mb_rows);
     }
