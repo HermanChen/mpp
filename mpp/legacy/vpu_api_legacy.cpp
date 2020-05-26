@@ -113,12 +113,12 @@ static MPP_RET vpu_api_set_enc_cfg(MppCtx mpp_ctx, MppApi *mpi,
     RK_S32 rc_mode  = cfg->rc_mode;
     RK_U32 change   = 0;
 
-    mpp_log("setup encoder rate control config:\n");
-    mpp_log("width %4d height %4d format %d\n", width, height, fmt);
-    mpp_log("rc_mode %s qp %d bps %d\n", (rc_mode) ? ("CBR") : ("CQP"), qp, bps);
-    mpp_log("fps in %d fps out %d gop %d\n", fps_in, fps_out, igop);
-    mpp_log("setup encoder stream feature config:\n");
-    mpp_log("profile %d level %d cabac %d\n", profile, level, cabac_en);
+    vpu_api_dbg_input("setup encoder rate control config:\n");
+    vpu_api_dbg_input("width %4d height %4d format %d\n", width, height, fmt);
+    vpu_api_dbg_input("rc_mode %s qp %d bps %d\n", (rc_mode) ? ("CBR") : ("CQP"), qp, bps);
+    vpu_api_dbg_input("fps in %d fps out %d gop %d\n", fps_in, fps_out, igop);
+    vpu_api_dbg_input("setup encoder stream feature config:\n");
+    vpu_api_dbg_input("profile %d level %d cabac %d\n", profile, level, cabac_en);
 
     mpp_assert(width);
     mpp_assert(height);
