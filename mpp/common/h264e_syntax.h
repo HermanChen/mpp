@@ -107,6 +107,7 @@ typedef struct H264eHwCfg_t {
      * error bits and change qp according to delta qp step
      */
     RK_S32 slice_size_mb_rows;
+    RK_S32 fixed_slice_size_mb_rows;
     RK_S32 cp_distance_mbs;
     RK_S32 cp_target[CHECK_POINTS_MAX];
     RK_S32 target_error[9]; //for rkv there are 9 levels

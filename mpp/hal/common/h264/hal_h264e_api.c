@@ -45,6 +45,7 @@ MPP_RET hal_h264e_init(void *hal, MppHalCfg *cfg)
     RK_U32 vcodec_type = 0;
 
     mpp_env_get_u32("hal_h264e_debug", &hal_h264e_debug, 0x00000001);
+    mpp_env_get_u32("slice_size_mb_rows", &hw_cfg->fixed_slice_size_mb_rows, 0);
 
     vcodec_type = mpp_get_vcodec_type();
     if (vcodec_type & HAVE_RKVENC) {
