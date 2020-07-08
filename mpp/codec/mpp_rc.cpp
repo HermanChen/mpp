@@ -684,6 +684,8 @@ MPP_RET mpp_tsvcrc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
     /* step 2: calc min and max bits */
     rc_syn->bit_min = tsvc_rc->iTargetBits * ctx->min_rate;
     rc_syn->bit_max = tsvc_rc->iTargetBits * ctx->max_rate;
+    mpp_rc_dbg_bps("tsvcrc_bits_allocation, rc_sync bit_target %d, bits_min %d, bits_max %d, min_rate %f, max_rate %f\n",
+                   rc_syn->bit_target, rc_syn->bit_min, rc_syn->bit_max, ctx->min_rate, ctx->max_rate);
 
     /* step 3: save bit target as previous target for next frame */
     rc_syn->type = ctx->cur_frmtype;
@@ -705,9 +707,13 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
             ctx->bits_target = ctx->bits_per_intra;
         else
             ctx->bits_target = ctx->bits_per_inter - mpp_pid_calc(&ctx->pid_inter);
+        mpp_rc_dbg_bps("RC: gop_mode all_inter, frame_type %d, bits_per_intra %d, bits_per_inter %d, pid_inter %d\n",
+                       ctx->cur_frmtype, ctx->bits_per_intra, ctx->bits_per_inter, ctx->pid_inter);
     } break;
     case MPP_GOP_ALL_INTRA : {
         ctx->bits_target = ctx->bits_per_intra - mpp_pid_calc(&ctx->pid_intra);
+        mpp_rc_dbg_bps("RC: gop_mode all_intra, bits_per_intra %d, pid_intra %d\n",
+                       ctx->bits_per_intra, ctx->pid_intra);
     } break;
     default : {
         if (ctx->cur_frmtype == INTRA_FRAME) {
@@ -728,9 +734,12 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
                 ctx->last_intra_percent = intra_percent;
                 ctx->bits_target = (ctx->fps_out * ctx->bits_per_pic + diff_bit)
                                    * intra_percent;
+                mpp_rc_dbg_rc("RC: fps_out %d, bits_per_pic %d, diff_bit %d, intra_percent %d\n",
+                              ctx->fps_out, ctx->bits_per_pic, diff_bit, intra_percent);
             } else {
                 ctx->bits_target = ctx->bits_per_intra
                                    - mpp_pid_calc(&ctx->pid_intra);
+                mpp_rc_dbg_rc("RC: bits_per_intra %d, pid_intra %d\n", ctx->bits_per_intra, ctx->pid_intra);
             }
         } else {
             if (ctx->pre_frmtype == INTRA_FRAME) {
@@ -804,7 +813,7 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
      */
     if (ctx->bits_target <= 0) {
         if (ctx->cur_frmtype == INTRA_FRAME) {
-            mpp_rc_dbg_rc("unbelievable case: intra frame target bits is zero!\n");
+            mpp_rc_dbg_rc("unbelievable case: intra frame target bits is zero!, prev_intra_target %d\n", ctx->prev_intra_target);
             ctx->bits_target = ctx->prev_intra_target / 2;
         } else {
             mpp_rc_dbg_rc("inter frame target bits is zero!"
@@ -812,7 +821,7 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
                           ctx->acc_intra_count, ctx->acc_inter_count,
                           ctx->acc_total_count);
             ctx->bits_target = ctx->prev_inter_target / 4;
-            mpp_rc_dbg_rc("after adjustment, target bits %d\n", ctx->bits_target);
+            mpp_rc_dbg_rc("after adjustment, target bits %d, prev_inter_target %d\n", ctx->bits_target, ctx->prev_inter_target);
         }
     }
 
@@ -829,6 +838,8 @@ MPP_RET mpp_rc_bits_allocation(MppRateControl *ctx, RcSyntax *rc_syn)
     /* step 2: calc min and max bits */
     rc_syn->bit_min = ctx->bits_target * ctx->min_rate;
     rc_syn->bit_max = ctx->bits_target * ctx->max_rate;
+    mpp_rc_dbg_bps("rc_bits_allocation, rc_sync bit_target %d, bits_min %d, bits_max %d, min_rate %f, max_rate %f\n",
+                   rc_syn->bit_target, rc_syn->bit_min, rc_syn->bit_max, ctx->min_rate, ctx->max_rate);
 
     /* step 3: save bit target as previous target for next frame */
     const char *type_str;

@@ -32,11 +32,13 @@
 #include "enc_impl_api.h"
 
 #define H264E_DBG_FUNCTION          (0x00000001)
+#define H264E_DBG_RC                (0x00000002)
 
 #define h264e_dbg(flag, fmt, ...)   _mpp_dbg(h264e_debug, flag, fmt, ## __VA_ARGS__)
 #define h264e_dbg_f(flag, fmt, ...) _mpp_dbg_f(h264e_debug, flag, fmt, ## __VA_ARGS__)
 
 #define h264e_dbg_func(fmt, ...)    h264e_dbg_f(H264E_DBG_FUNCTION, fmt, ## __VA_ARGS__)
+#define h264e_dbg_rc(fmt, ...)      h264e_dbg(H264E_DBG_RC, fmt, ## __VA_ARGS__)
 
 RK_U32 h264e_debug = 0;
 
@@ -173,6 +175,8 @@ MPP_RET h264e_encode(void *ctx, HalEncTask *task)
         int mb_height = ((cfg->prep.height + 15) & (~15)) >> 4;
         /* When there is no bit to allocate set bit_target as total mb count */
         rc_syn->bit_target = mb_width * mb_height;
+        h264e_dbg_rc("not bit to allocate, set bit_target to %d, mb_width %d, mb_height %d\n",
+                     rc_syn->bit_target, mb_width, mb_height);
     }
     mpp_rc_record_param(&p->rc_list, p->rc, rc_syn);
 
