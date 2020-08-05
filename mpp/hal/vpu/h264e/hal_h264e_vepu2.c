@@ -750,29 +750,27 @@ MPP_RET reorganize_hwstream2tsvc(H264eHalContext *ctx, HalTaskInfo *task)
 
         // update slice information
         h264e_slice_update(&ctx->slice, ctx->dpb);
-        if (ctx->slice.first_slice_flag) {
-            if (ctx->svc) {
-                H264ePrefixNal prefix;
+        if (ctx->svc) {
+            H264ePrefixNal prefix;
 
-                prefix.idr_flag = ctx->slice.idr_flag;
-                prefix.nal_ref_idc = ctx->slice.nal_reference_idc;
-                prefix.priority_id = 0;
-                prefix.no_inter_layer_pred_flag = 1;
-                prefix.dependency_id = 0;
-                prefix.quality_id = 0;
-                prefix.temporal_id = task->enc.temporal_id;
-                prefix.use_ref_base_pic_flag = 0;
-                prefix.discardable_flag = 0;
-                prefix.output_flag = 1;
+            prefix.idr_flag = ctx->slice.idr_flag;
+            prefix.nal_ref_idc = ctx->slice.nal_reference_idc;
+            prefix.priority_id = 0;
+            prefix.no_inter_layer_pred_flag = 1;
+            prefix.dependency_id = 0;
+            prefix.quality_id = 0;
+            prefix.temporal_id = task->enc.temporal_id;
+            prefix.use_ref_base_pic_flag = 0;
+            prefix.discardable_flag = 0;
+            prefix.output_flag = 1;
 
-                prefix_bit = h264e_slice_write_prefix_nal_unit_svc(&prefix, dst_buf, buf_size);
-                prefix_byte = prefix_bit /= 8;
-                h264e_dpb_slice("prefix_len %d\n", prefix_byte);
-                dst_buf += prefix_byte;
-                buf_size -= prefix_byte;
-            }
-            ctx->slice.first_slice_flag = 0;
+            prefix_bit = h264e_slice_write_prefix_nal_unit_svc(&prefix, dst_buf, buf_size);
+            prefix_byte = prefix_bit /= 8;
+            h264e_dpb_slice("prefix_len %d\n", prefix_byte);
+            dst_buf += prefix_byte;
+            buf_size -= prefix_byte;
         }
+        ctx->slice.first_slice_flag = 0;
 
         ctx->slice.frame_num = ctx->dpb->curr->frame_num;
         ctx->slice.pic_order_cnt_lsb = ctx->dpb->curr->poc;
