@@ -477,15 +477,19 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
     if (ctx->cfg->misc.split.split_en) {
         RK_U32 mb_per_col = (hw_cfg->height + 15) / 16;
         MppEncSliceSplit *split = &ctx->cfg->misc.split;
+
         mpp_assert(split->slice_size > 0);
         RK_S32 slice_num = rc_syn->bit_target / (split->slice_size * 8);
         h264e_hal_dbg(H264E_DBG_RC, "ideal slice_num %d, slice_size %d\n", slice_num, split->slice_size);
         if (slice_num <= 0) {
             slice_num = 4;
         }
+
         RK_U32 slice_mb_rows =  (mb_per_col + slice_num - 1) / slice_num;
         hw_cfg->slice_size_mb_rows = hw_cfg->fixed_slice_size_mb_rows ?
-                                     hw_cfg->fixed_slice_size_mb_rows : mpp_clip(slice_mb_rows, 2, 127);
+                                     hw_cfg->fixed_slice_size_mb_rows :
+                                     (RK_U32)mpp_clip(slice_mb_rows, 2, 127);
+
         slice_num = (mb_per_col + hw_cfg->slice_size_mb_rows - 1) / (hw_cfg->slice_size_mb_rows);
         h264e_hal_dbg(H264E_DBG_RC, "real slice_num %d hw_cfg->slice_size_mb_rows = %d, bit_target = %d, mb_per_column = %d",
                       slice_num, hw_cfg->slice_size_mb_rows,
