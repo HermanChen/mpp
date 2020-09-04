@@ -1508,9 +1508,10 @@ PUT_FRAME:
                       width, height, fd, size, aEncInStrm->timeUs, aEncInStrm->nFlags);
 
     ret = mpi->encode_put_frame(mpp_ctx, frame);
-    if (ret)
+    if (ret) {
         mpp_err_f("encode_put_frame ret %d\n", ret);
-    else
+        mpp_frame_deinit(&frame);
+    } else
         aEncInStrm->size = 0;
 FUNC_RET:
 
