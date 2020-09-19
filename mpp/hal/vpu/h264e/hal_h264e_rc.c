@@ -501,7 +501,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
 
     switch (prep->format) {
     case MPP_FMT_YUV420SP: {
-        RK_U32 offset_uv = hw_cfg->hor_stride * hw_cfg->ver_stride;
+        RK_U32 offset_uv = hw_cfg->hor_stride * hw_cfg->height;
 
         // mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
         // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
@@ -511,7 +511,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         break;
     }
     case MPP_FMT_YUV420P: {
-        RK_U32 offset_y = hw_cfg->hor_stride * hw_cfg->ver_stride;
+        RK_U32 offset_y = hw_cfg->hor_stride * hw_cfg->height;
 
         mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
         // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
