@@ -486,9 +486,9 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         }
 
         RK_U32 slice_mb_rows =  (mb_per_col + slice_num - 1) / slice_num;
-        hw_cfg->slice_size_mb_rows = (hw_cfg->fixed_slice_size_mb_rows && (hw_cfg->height < 720) && (hw_cfg->width < 1280)) ?
+        hw_cfg->slice_size_mb_rows = hw_cfg->fixed_slice_size_mb_rows ?
                                      hw_cfg->fixed_slice_size_mb_rows :
-                                     (RK_U32)mpp_clip(slice_mb_rows, 2, 127);
+                                     (RK_U32)mpp_clip(slice_mb_rows, 1, 127);
 
         slice_num = (mb_per_col + hw_cfg->slice_size_mb_rows - 1) / (hw_cfg->slice_size_mb_rows);
         h264e_hal_dbg(H264E_DBG_RC, "real slice_num %d hw_cfg->slice_size_mb_rows = %d, bit_target = %d, mb_per_column = %d",
