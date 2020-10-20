@@ -27,6 +27,7 @@
 #define VPU_API_DBG_FUNCTION            (0x00000001)
 #define VPU_API_DBG_INPUT               (0x00000010)
 #define VPU_API_DBG_OUTPUT              (0x00000020)
+#define VPU_API_DBG_DUMP_OUT            (0x00000040)
 
 #define vpu_api_dbg(flag, fmt, ...)     _mpp_dbg(vpu_api_debug, flag, fmt, ## __VA_ARGS__)
 #define vpu_api_dbg_f(flag, fmt, ...)   _mpp_dbg_f(vpu_api_debug, flag, fmt, ## __VA_ARGS__)
@@ -80,6 +81,8 @@ private:
     RK_U32 mEosSet;
 
     EncParameter_t enc_cfg;
+
+    FILE *dbg_out;
 };
 
 #endif /*_VPU_API_H_*/

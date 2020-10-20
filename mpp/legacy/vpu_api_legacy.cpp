@@ -517,6 +517,9 @@ VpuApiLegacy::~VpuApiLegacy()
 {
     vpu_api_dbg_func("enter\n");
 
+    if ((vpu_api_debug & VPU_API_DBG_DUMP_OUT) && dbg_out)
+        fclose(dbg_out);
+
     if (memGroup) {
         mpp_buffer_group_put(memGroup);
         memGroup = NULL;
@@ -629,9 +632,17 @@ RK_S32 VpuApiLegacy::init(VpuCodecContext *ctx, RK_U8 *extraData, RK_U32 extra_s
 
         mpi->control(mpp_ctx, MPP_ENC_GET_EXTRA_INFO, &pkt);
 
+        if ((vpu_api_debug & VPU_API_DBG_DUMP_OUT) && !dbg_out) {
+            dbg_out = fopen("/data/tmp/enc_out.h264", "w+b");
+        }
+
         if (pkt) {
             ctx->extradata_size = (RK_S32)mpp_packet_get_length(pkt);
             ctx->extradata      = mpp_packet_get_data(pkt);
+            if ((vpu_api_debug & VPU_API_DBG_DUMP_OUT) && dbg_out) {
+                fwrite(ctx->extradata, 1, ctx->extradata_size, dbg_out);
+                fflush(dbg_out);
+            }
         }
         pkt = NULL;
     } else { /* MPP_CTX_DEC */
@@ -1563,6 +1574,10 @@ RK_S32 VpuApiLegacy::encoder_getstream(VpuCodecContext *ctx, EncoderOut_t *aEncO
                            packet, length, pts, aEncOut->keyFrame, eos);
 
         mEosSet = eos;
+        if ((vpu_api_debug & VPU_API_DBG_DUMP_OUT) && dbg_out) {
+            fwrite(src, 1, length + offset, dbg_out);
+            fflush(dbg_out);
+        }
         mpp_packet_deinit(&packet);
     } else {
         aEncOut->size = 0;
