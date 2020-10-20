@@ -541,8 +541,12 @@ MPP_RET hal_h264e_vepu2_gen_regs(void *hal, HalTaskInfo *task)
 
     ctx->frame_cnt++;
     hw_cfg->frame_num++;
-    if (hw_cfg->frame_type == H264E_VPU_FRAME_I)
+    if (hw_cfg->frame_type == H264E_VPU_FRAME_I) {
         hw_cfg->idr_pic_id++;
+        h264e_hal_dbg(H264E_DBG_DETAIL, "generate I-frame\n");
+    } else {
+        h264e_hal_dbg(H264E_DBG_DETAIL, "generate P-frame\n");
+    }
     if (hw_cfg->idr_pic_id == 16)
         hw_cfg->idr_pic_id = 0;
 
@@ -905,6 +909,7 @@ MPP_RET hal_h264e_vepu2_wait(void *hal, HalTaskInfo *task)
         hw_cfg->qpCtrl.frameBitCnt = result.bits;
         hw_cfg->pre_bit_diff = result.bits - syn->bit_target;
         h264e_vpu_update_result(hw_cfg, result.bits, rc_syn->bit_target);
+        h264e_hal_dbg(H264E_DBG_DETAIL, "update result, result.bytes %d\n", result.bits / 8);
 
         if (ctx->tsvc_rc.tlayer_num > 1)
             h264e_vpu_tsvcrc_update(&ctx->tsvc_rc, result.bits, avg_qp);
