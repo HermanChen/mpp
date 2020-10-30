@@ -124,6 +124,7 @@ void h264e_vpu_rc_calPfrmqp(H264eHalContext *ctx, H264eHwCfg *hw_cfg)
     if (PreMeanQp > 0 && (PreMeanQp - hw_cfg->qp_prev) > 5) {
         hw_cfg->qp = hw_cfg->qp_prev + 1;
     }
+    h264e_hal_dbg(H264E_DBG_RC, "calPfrmQp %d\n", hw_cfg->qp);
 }
 
 void h264e_vpu_tsvc_rc_calqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
@@ -157,8 +158,9 @@ void h264e_vpu_tsvc_rc_calqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg 
         hw_cfg->qp += iDeltaQpTemporal;
         if (svc_rc->iQp[svc_rc->iFrameCodedInVGop] > 0)
             hw_cfg->qp = (hw_cfg->qp + svc_rc->iQp[svc_rc->iFrameCodedInVGop]) >> 1;
+        h264e_hal_dbg(H264E_DBG_RC, "deltaQp %d, iQp[%d]=%d, iTlLast %d\n", iDeltaQpTemporal, svc_rc->iFrameCodedInVGop, svc_rc->iQp[svc_rc->iFrameCodedInVGop], iTlLast);
     }
-    // mpp_log("tsvc temporalid %d targetbit %d config qp %d", svc_rc->uiTemporalId, rc_syn->bit_target, hw_cfg->qp);
+    h264e_hal_dbg(H264E_DBG_RC, "tsvc temporalid %d targetbit %d config qp %d\n", svc_rc->uiTemporalId, rc_syn->bit_target, hw_cfg->qp);
 }
 
 MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
@@ -315,6 +317,16 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
         hw_cfg->delta_qp[6] = 3;
     }
 
+    if (ctx->tsvc_rc.uiTemporalId == 0) {
+        hw_cfg->delta_qp[0] = 0;
+        hw_cfg->delta_qp[1] = 0;
+        hw_cfg->delta_qp[2] = 0;
+        hw_cfg->delta_qp[3] = 0;
+        hw_cfg->delta_qp[4] = 1;
+        hw_cfg->delta_qp[5] = 2;
+        hw_cfg->delta_qp[6] = 3;
+    }
+
     for (i = 0; i < CTRL_LEVELS; i++) {
         tmp =  hw_cfg->cp_target[i];
         tmp = mpp_clip(tmp / 4, -32768, 32767);
@@ -456,9 +468,12 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
     if (rc_syn->type == INTRA_FRAME) {
         hw_cfg->frame_type = H264E_VPU_FRAME_I;
         hw_cfg->frame_num = 0;
+        h264e_hal_dbg(H264E_DBG_RC, "frame type I, frame_num 0\n");
     } else {
         hw_cfg->frame_type = H264E_VPU_FRAME_P;
+        h264e_hal_dbg(H264E_DBG_RC, "frame type P, frame_num %d\n", hw_cfg->frame_num);
     }
+
 
     hw_cfg->keyframe_max_interval = rc->gop;
     hw_cfg->qp_min = codec->qp_min;
@@ -602,19 +617,36 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
         int flag = 1;
         int cnt = 1;
         int re_qp = hw_cfg->qp;
+        RK_S32 re_max_bits = 0, re_min_bits = 0;
+        RK_S32 re_min_qp = 1, re_max_qp = 60;
+        if (fb->out_strm_size * 8 > rc_syn->bit_target) {
+            re_max_bits = fb->out_strm_size * 8;
+            re_min_qp = hw_cfg->qp;
+        } else {
+            re_min_bits = fb->out_strm_size * 8;
+            re_max_qp = hw_cfg->qp;
+        }
         if (tsvc_rc->uiTemporalId <= 1) {
             cnt = 2;
         }
         do {
             pic_bits =  fb->out_strm_size * 8;
-            //mpp_log("pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
+            h264e_hal_dbg(H264E_DBG_RC, "pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
             if (pic_bits - rc_syn->bit_target >= rc_syn->bit_target * 20 / 100
                 || pic_bits - rc_syn->bit_target <= -pic_bits * 20 / 100) {
 
                 if (pic_bits - rc_syn->bit_target > 0) {
                     ratio = (pic_bits - rc_syn->bit_target) * 100 / rc_syn->bit_target;
+                    if (pic_bits < re_max_bits || re_max_bits == 0) {
+                        re_max_bits = pic_bits;
+                        re_min_qp = hw_cfg->qp;
+                    }
                 } else {
                     ratio = (pic_bits - rc_syn->bit_target) * 100 / pic_bits;
+                    if (pic_bits > re_min_bits || re_min_bits == 0) {
+                        re_min_bits = pic_bits;
+                        re_max_qp = hw_cfg->qp;
+                    }
                 }
                 ratio = MPP_MIN(ratio, 300);
                 if (rc_syn->type == INTRA_FRAME) {
@@ -640,10 +672,17 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
                             else
                                 dealt_qp = (ratio * 4) / 100 + flag;
                         }
+
+                    }
+                    h264e_hal_dbg(H264E_DBG_RC, "pic_bits %d, re_max_bits %d, re_min_bits %d\n", pic_bits, re_max_bits, re_min_bits);
+                    h264e_hal_dbg(H264E_DBG_RC, "re_min qp %d re_max_qp %d delta_qp %d hw_cfg->qp %d\n",
+                                  re_min_qp, re_max_qp, dealt_qp, hw_cfg->qp);
+                    if ((hw_cfg->qp + dealt_qp) != MPP_CLIP3(re_min_qp, re_max_qp, (hw_cfg->qp + dealt_qp))) {
+                        dealt_qp = (re_max_qp + re_min_qp) / 2 - hw_cfg->qp;
                     }
                 }
                 if (dealt_qp != 0) {
-                    //mpp_log("reencode dealt_qp %d", dealt_qp);
+                    h264e_hal_dbg(H264E_DBG_RC, "reencode dealt_qp %d, qp %d\n", dealt_qp, hw_cfg->qp + dealt_qp);
                     send(hal, (RK_U32 *)reg_out, dealt_qp);
                     feedback(fb, reg_out);
                     task->enc.length = fb->out_strm_size;
