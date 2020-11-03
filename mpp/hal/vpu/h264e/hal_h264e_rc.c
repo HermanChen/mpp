@@ -287,9 +287,9 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
     }
     if (ctx->tsvc_rc.tlayer_num > 1) {
         hw_cfg->target_error[0] = -tmp * 3;
-        hw_cfg->delta_qp[0] = -3;
+        hw_cfg->delta_qp[0] = -1;
         hw_cfg->target_error[1] = -tmp * 2;
-        hw_cfg->delta_qp[1] = -2;
+        hw_cfg->delta_qp[1] = -1;
         hw_cfg->target_error[2] = -tmp * 1;
         hw_cfg->delta_qp[2] = -1;
         hw_cfg->target_error[3] = tmp * 1;
@@ -302,7 +302,7 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
         hw_cfg->delta_qp[6] = 7;
     } else {
         hw_cfg->target_error[0] = -tmp * 3;
-        hw_cfg->delta_qp[0] = -3;
+        hw_cfg->delta_qp[0] = -2;
         hw_cfg->target_error[1] = -tmp * 2;
         hw_cfg->delta_qp[1] = -2;
         hw_cfg->target_error[2] = -tmp * 1;
@@ -517,7 +517,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
 
     switch (prep->format) {
     case MPP_FMT_YUV420SP: {
-        RK_U32 offset_uv = hw_cfg->hor_stride * hw_cfg->height;
+        RK_U32 offset_uv = hw_cfg->hor_stride * hw_cfg->ver_stride;
 
         // mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
         // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
@@ -527,7 +527,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
         break;
     }
     case MPP_FMT_YUV420P: {
-        RK_U32 offset_y = hw_cfg->hor_stride * hw_cfg->height;
+        RK_U32 offset_y = hw_cfg->hor_stride * hw_cfg->ver_stride;
 
         mpp_assert(prep->hor_stride == MPP_ALIGN(prep->width, 8));
         // mpp_assert(prep->ver_stride == MPP_ALIGN(prep->height, 8));
