@@ -189,7 +189,7 @@ static MPP_RET hal_jpege_vepu1_gen_regs_v2(void *hal, HalEncTask *task)
     RK_U8  *buf = mpp_buffer_get_ptr(output);
     size_t size = mpp_buffer_get_size(output);
     size_t length = mpp_packet_get_length(task->packet);
-    const RK_U8 *qtable[2];
+    const RK_U8 *qtable[2] = {NULL};
     RK_U32 val32;
     RK_S32 bitpos;
     RK_S32 bytepos;
