@@ -332,6 +332,9 @@ MPP_RET bits_model_alloc(RcModelV2Ctx *ctx, EncRcTaskInfo *cfg, RK_S64 total_bit
     RK_S32 vi_scale = ctx->vi_scale;
     RK_S32 alloc_bits = 0;
 
+    if (ctx->p_sumbits == 0)
+        ctx->p_sumbits = 1;
+
     ctx->i_scale = 80 * ctx->i_sumbits / (2 * ctx->p_sumbits);
     i_scale = ctx->i_scale;
 
