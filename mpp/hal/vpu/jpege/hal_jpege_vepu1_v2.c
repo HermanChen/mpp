@@ -217,6 +217,8 @@ static MPP_RET hal_jpege_vepu1_gen_regs_v2(void *hal, HalEncTask *task)
     /* seek length bytes data */
     jpege_seek_bits(bits, length << 3);
     /* NOTE: write header will update qtable */
+    qtable[0] = NULL;
+    qtable[1] = NULL;
     write_jpeg_header(bits, syntax, qtable);
 
     memset(regs, 0, sizeof(RK_U32) * VEPU_JPEGE_VEPU1_NUM_REGS);
