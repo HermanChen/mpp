@@ -107,6 +107,7 @@ typedef struct H264eHwCfg_t {
      * error bits and change qp according to delta qp step
      */
     RK_S32 slice_size_mb_rows;
+    RK_U32 slice_num;
     RK_U32 fixed_slice_size_mb_rows;
     RK_S32 cp_distance_mbs;
     RK_S32 cp_target[CHECK_POINTS_MAX];

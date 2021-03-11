@@ -1435,7 +1435,7 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
         hor_stride = width;
         ver_stride = height;
     }
-    vpu_api_dbg_func("dhq, sendframe w:h=%dx%d, size =0x%08x\n", ctx->width, ctx->height, aEncInStrm->size);
+    vpu_api_dbg_func("sendframe w:h=%dx%d, size =0x%08x\n", ctx->width, ctx->height, aEncInStrm->size);
 
     mpp_frame_set_width(frame, width);
     mpp_frame_set_height(frame, height);

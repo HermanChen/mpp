@@ -72,7 +72,7 @@ static RK_S32 find_best_qp(MppLinReg *ctx, MppEncH264Cfg *codec,
 
 void h264e_vpu_rc_calIfrmqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *hw_cfg)
 {
-    int intraQpDelta = -3;
+    int intraQpDelta = -2;
     MppEncCfgSet *cfg = ctx->cfg;
     MppEncH264Cfg *codec = &cfg->codec.h264;
 
@@ -86,7 +86,7 @@ void h264e_vpu_rc_calIfrmqp(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
      * have a big qp step between these two frames
      */
     if (hw_cfg->pre_frame_type  == H264E_VPU_FRAME_P)
-        hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_prev - 4,
+        hw_cfg->qp = mpp_clip(hw_cfg->qp, hw_cfg->qp_prev - 3,
                               42);
     else
         hw_cfg->qp = find_best_qp(ctx->intra_qs, codec, hw_cfg->qp_prev,
@@ -213,7 +213,7 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
     if (ctx->frame_cnt == 0) {
         RK_S32 mbRows = ctx->cfg->prep.height / 16;
         hw_cfg->mad_qp_delta = 2;
-        hw_cfg->mad_threshold = 256 * 6;
+        hw_cfg->mad_threshold = 0;
         hw_cfg->qpCtrl.checkPoints = MPP_MIN(mbRows - 1, CHECK_POINTS_MAX);
         if (rc->rc_mode == MPP_ENC_RC_MODE_CBR) {
             hw_cfg->qpCtrl.checkPointDistance =
@@ -302,9 +302,9 @@ MPP_RET h264e_vpu_mb_rc_cfg(H264eHalContext *ctx, RcSyntax *rc_syn, H264eHwCfg *
         hw_cfg->delta_qp[6] = 7;
     } else {
         hw_cfg->target_error[0] = -tmp * 3;
-        hw_cfg->delta_qp[0] = -2;
+        hw_cfg->delta_qp[0] = -1;
         hw_cfg->target_error[1] = -tmp * 2;
-        hw_cfg->delta_qp[1] = -2;
+        hw_cfg->delta_qp[1] = -1;
         hw_cfg->target_error[2] = -tmp * 1;
         hw_cfg->delta_qp[2] = -1;
         hw_cfg->target_error[3] = tmp * 1;
@@ -507,6 +507,7 @@ MPP_RET h264e_vpu_update_hw_cfg(H264eHalContext *ctx, HalEncTask *task,
                                      (RK_U32)mpp_clip(slice_mb_rows, 1, 127);
 
         slice_num = (mb_per_col + hw_cfg->slice_size_mb_rows - 1) / (hw_cfg->slice_size_mb_rows);
+        hw_cfg->slice_num = slice_num;
         h264e_hal_dbg(H264E_DBG_RC, "real slice_num %d hw_cfg->slice_size_mb_rows = %d, bit_target = %d, mb_per_column = %d",
                       slice_num, hw_cfg->slice_size_mb_rows,
                       rc_syn->bit_target, mb_per_col);
@@ -599,19 +600,52 @@ void h264e_vpu_tsvc_rc_init(H264eHalTsvcRc *svc_rc, RK_S32 max_layer_id)
     svc_rc->tlayer_num = max_layer_id + 1;
 }
 
+RK_S32 check_slice_size(void *hal, HalTaskInfo *task)
+{
+    H264eHalContext *ctx = (H264eHalContext *)hal;
+    h264e_hal_vpu_buffers *bufs = (h264e_hal_vpu_buffers *)ctx->buffers;
+    H264eHwCfg *hw_cfg = &ctx->hw_cfg;
+    MppEncPrepCfg *prep = &ctx->set->prep;
+    RcSyntax *rc_syn = (RcSyntax *)task->enc.syntax.data;
+    RK_U32 *base = mpp_buffer_get_ptr(bufs->hw_nal_size_table_buf);
+    RK_U32 i;
+    RK_U32 exceed_cnt = 0;
+    RK_U32 exceed_slice = 0;
+    RK_S32 ratio;
+    const RK_U32 MTU_SIZE = 1260 - 10;
+
+    for (i = 0; i < hw_cfg->slice_num; i++) {
+        if (base[i] >= MTU_SIZE) {
+            exceed_cnt++;
+            h264e_hal_dbg(H264E_DBG_RC, "generated large slice %d\n", base[i]);
+            if (base[i] > exceed_slice)
+                exceed_slice = base[i];
+        }
+    }
+
+    if (exceed_cnt) {
+        ratio = (exceed_slice * 100 + MTU_SIZE) / MTU_SIZE - 100;
+        return ratio;
+    } else
+        return 0;
+}
+
 void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
                           MPP_RET (*send)(void* hal, RK_U32 *reg, RK_S32 d_qp),
                           MPP_RET (*feedback)(h264e_feedback* fb, void * reg))
 {
     H264eHalContext *ctx = (H264eHalContext *)hal;
+    h264e_hal_vpu_buffers *bufs = (h264e_hal_vpu_buffers *)ctx->buffers;
     h264e_feedback *fb = &ctx->feedback;
     RcSyntax *rc_syn = (RcSyntax *)task->enc.syntax.data;
     H264eHwCfg *hw_cfg = &ctx->hw_cfg;
     MppEncPrepCfg *prep = &ctx->set->prep;
     RK_S32 ratio = 0;
+    RK_U32 slice_ratio = 0;
     RK_S32 pic_bits;
     RK_S32 num_mb = (MPP_ALIGN(prep->width, 16) * MPP_ALIGN(prep->height, 16)) >> 8;
     H264eHalTsvcRc *tsvc_rc = &ctx->tsvc_rc;
+
     if (tsvc_rc->tlayer_num > 1) {
         int dealt_qp = 0;
         int flag = 1;
@@ -632,8 +666,14 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
         do {
             pic_bits =  fb->out_strm_size * 8;
             h264e_hal_dbg(H264E_DBG_RC, "pic_bits %d rc_syn->bit_target %d ", pic_bits, rc_syn->bit_target);
-            if (pic_bits - rc_syn->bit_target >= rc_syn->bit_target * 20 / 100
-                || pic_bits - rc_syn->bit_target <= -pic_bits * 20 / 100) {
+
+            if (ctx->cfg->misc.split.split_en) {
+                slice_ratio = check_slice_size(hal, task);
+            }
+
+            if ((pic_bits - rc_syn->bit_target) >= (rc_syn->bit_target * 20 / 100)
+                || (pic_bits - rc_syn->bit_target) <= (-pic_bits * 20 / 100)
+                || slice_ratio) {
 
                 if (pic_bits - rc_syn->bit_target > 0) {
                     ratio = (pic_bits - rc_syn->bit_target) * 100 / rc_syn->bit_target;
@@ -650,7 +690,7 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
                 }
                 ratio = MPP_MIN(ratio, 300);
                 if (rc_syn->type == INTRA_FRAME) {
-                    dealt_qp = (ratio * 6) / 100 + 1;
+                    dealt_qp = (ratio * 3) / 100 + 1 + slice_ratio * 5 / 100;
                 } else {
                     if (cnt == 0) {
                         if (!flag && ratio > 0) {
@@ -698,30 +738,41 @@ void h264e_check_reencode(void *hal, HalTaskInfo *task, void *reg_out,
             }
         } while (1);
     } else {
+        int dealt_qp = 3;
+        int cnt = 0;
         if (rc_syn->type == INTER_P_FRAME) {
-            int dealt_qp = 3;
-            int cnt = 2;
-            do {
-                if (hw_cfg->qp < 30) {
-                    dealt_qp = 5;
-                } else if (hw_cfg->qp < 42) {
-                    dealt_qp = 3;
-                } else {
-                    dealt_qp = 2;
-                }
-                if ((fb->out_strm_size * 8 >  (RK_U32)rc_syn->bit_target * 3) && (hw_cfg->qp < hw_cfg->qp_max)) {
-                    send(hal, (RK_U32 *)reg_out, dealt_qp);
-                    feedback(fb, reg_out);
-                    task->enc.length = fb->out_strm_size;
-                    hw_cfg->qp_prev = fb->qp_sum / num_mb;
-                    if ((cnt-- <= 0) || (hw_cfg->qp == hw_cfg->qp_max)) {
-                        break;
-                    }
-                } else {
+            cnt = 2;
+        }
+        do {
+            if (hw_cfg->qp < 30) {
+                dealt_qp = 5;
+            } else if (hw_cfg->qp < 42) {
+                dealt_qp = 3;
+            } else {
+                dealt_qp = 2;
+            }
+
+            if (ctx->cfg->misc.split.split_en) {
+                slice_ratio = check_slice_size(hal, task);
+            }
+
+            if (((fb->out_strm_size * 8 >  (RK_U32)rc_syn->bit_target * 3) && (hw_cfg->qp < hw_cfg->qp_max))
+                || slice_ratio) {
+
+                dealt_qp += slice_ratio * 5 / 100;
+                dealt_qp = mpp_clip(dealt_qp, 2, 5);
+                h264e_hal_dbg(H264E_DBG_RC, "reencode dealt_qp %d, qp %d\n", dealt_qp, hw_cfg->qp + dealt_qp);
+                send(hal, (RK_U32 *)reg_out, dealt_qp);
+                feedback(fb, reg_out);
+                task->enc.length = fb->out_strm_size;
+                hw_cfg->qp_prev = fb->qp_sum / num_mb;
+                if ((cnt-- <= 0) || (hw_cfg->qp == hw_cfg->qp_max)) {
                     break;
                 }
-            } while (1);
-        }
+            } else {
+                break;
+            }
+        } while (1);
     }
 }
 
