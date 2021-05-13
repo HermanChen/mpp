@@ -1496,6 +1496,7 @@ MPP_RET idr_memory_management(H264_DpbBuf_t *p_Dpb, H264_StorePic_t *p)
     RK_U32 i = 0;
     RK_S32 type = -1;
     MPP_RET ret = MPP_ERR_UNKNOW;
+    H264dErrCtx_t *p_err = &p_Dpb->p_Vid->p_Dec->errctx;
 
     if (p->no_output_of_prior_pics_flag) {
         //!< free all stored pictures
@@ -1519,6 +1520,7 @@ MPP_RET idr_memory_management(H264_DpbBuf_t *p_Dpb, H264_StorePic_t *p)
     update_ref_list(p_Dpb);
     update_ltref_list(p_Dpb);
     p_Dpb->last_output_poc = INT_MIN;
+    p_err->i_slice_no = 1;
 
     if (p->long_term_reference_flag) {
         p_Dpb->max_long_term_pic_idx = 0;

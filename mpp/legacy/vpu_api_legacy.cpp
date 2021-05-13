@@ -663,6 +663,11 @@ RK_S32 VpuApiLegacy::init(VpuCodecContext *ctx, RK_U8 *extraData, RK_U32 extra_s
         ret = mpi->control(mpp_ctx, MPP_DEC_SET_ENABLE_DEINTERLACE, &flag);
         if (ret)
             mpp_err_f("disable mpp deinterlace failed ret %d\n", ret);
+
+        flag = 1;
+        ret = mpi->control(mpp_ctx, MPP_DEC_SET_IMMEDIATE_OUT, &flag);
+        if (ret)
+            mpp_err_f("enable mpp immediate out failed ret %d\n", ret);
     }
 
     init_ok = 1;
