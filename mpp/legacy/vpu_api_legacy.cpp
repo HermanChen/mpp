@@ -34,6 +34,7 @@
 
 RK_U32 vpu_api_debug = 0;
 static RK_U32 avaya_surface_en = 0;
+static RK_U32 packet_count = 0;
 
 static MppFrameFormat vpu_pic_type_remap_to_mpp(EncInputPictureType type)
 {
@@ -1440,7 +1441,8 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
         hor_stride = width;
         ver_stride = height;
     }
-    vpu_api_dbg_func("sendframe w:h=%dx%d, size =0x%08x\n", ctx->width, ctx->height, aEncInStrm->size);
+    frame_count++;
+    vpu_api_dbg_func("sendframe w:h=%dx%d, size =0x%08x, count %d\n", ctx->width, ctx->height, aEncInStrm->size, frame_count);
 
     mpp_frame_set_width(frame, width);
     mpp_frame_set_height(frame, height);
@@ -1577,8 +1579,9 @@ RK_S32 VpuApiLegacy::encoder_getstream(VpuCodecContext *ctx, EncoderOut_t *aEncO
             mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &temporal_id);
             aEncOut->keyFrame |= temporal_id << 28;
         }
-        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %x eos %d\n",
-                           packet, length, pts, aEncOut->keyFrame, eos);
+        packet_count++;
+        vpu_api_dbg_output("get packet %p size %d pts %lld keyframe %x eos %d, count %d\n",
+                           packet, length, pts, aEncOut->keyFrame, eos, packet_count);
 
         mEosSet = eos;
         if ((vpu_api_debug & VPU_API_DBG_DUMP_OUT) && dbg_out) {
