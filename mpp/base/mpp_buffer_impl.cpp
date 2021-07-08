@@ -678,7 +678,8 @@ MppBufferGroupImpl *MppBufferService::get_group(const char *tag, const char *cal
     p->type     = buffer_type;
     p->limit    = BUFFER_GROUP_SIZE_DEFAULT;
     p->group_id = id;
-    p->clear_on_exit = (mpp_buffer_debug & MPP_BUF_DBG_CLR_ON_EXIT) ? (1) : (0);
+    //p->clear_on_exit = (mpp_buffer_debug & MPP_BUF_DBG_CLR_ON_EXIT) ? (1) : (0);
+    p->clear_on_exit = 1;
 
     mpp_allocator_get(&p->allocator, &p->alloc_api, type);
 
