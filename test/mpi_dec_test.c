@@ -622,14 +622,11 @@ int dec_decode(MpiDecTestCmd *cmd)
         }
     }
 
-    ret = mpp_init(ctx, MPP_CTX_DEC, type);
-    if (ret) {
-        mpp_err("%p mpp_init failed\n", ctx);
-        goto MPP_TEST_OUT;
-    }
-
     mpp_dec_cfg_init(&cfg);
 
+    ret = mpp_dec_cfg_set_u32(cfg, "base:type", 0);
+    ret = mpp_dec_cfg_set_u32(cfg, "base:coding", 8);
+    ret = mpp_dec_cfg_set_u32(cfg, "base:hw_type", 3);
     /*
      * split_parse is to enable mpp internal frame spliter when the input
      * packet is not aplited into frames.
@@ -643,6 +640,12 @@ int dec_decode(MpiDecTestCmd *cmd)
     ret = mpi->control(ctx, MPP_DEC_SET_CFG, cfg);
     if (ret) {
         mpp_err("%p failed to set cfg %p ret %d\n", ctx, cfg, ret);
+        goto MPP_TEST_OUT;
+    }
+
+    ret = mpp_init(ctx, MPP_CTX_DEC, type);
+    if (ret) {
+        mpp_err("%p mpp_init failed\n", ctx);
         goto MPP_TEST_OUT;
     }
 
