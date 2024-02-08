@@ -1756,7 +1756,7 @@ static RK_S32 parser_nal_units(HEVCContext *s)
     for (i = 0; i < s->nb_nals; i++) {
         ret = parser_nal_unit(s, s->nals[i].data, s->nals[i].size);
         if (ret < 0) {
-            mpp_err("Error parsing NAL unit #%d,error ret = 0xd.\n", i, ret);
+            mpp_err("Error parsing NAL unit #%d,error ret = %d.\n", i, ret);
             goto fail;
         }
         /* update slice data if slice_header_extension_present_flag is 1*/
