@@ -9,6 +9,11 @@ Clone and enter repo:
 git clone https://github.com/roman-koshchei/mpp && cd mpp
 ```
 
+IMPORTANT switch to latest tag instead of develop branch, in my case it's `1.0.11`:
+```bash
+git checkout tags/1.0.11
+```
+
 Run cmake with `/usr` prefix:
 ```bash
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DRKPLATFORM=ON -DHAVE_DRM=ON
