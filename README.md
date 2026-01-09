@@ -29,6 +29,36 @@ Install:
 sudo make install
 ```
 
+Add your user to `video` group:
+```bash
+sudo usermod -aG video $USER
+```
+
+Change `/dev/mpp_service` into `video` group by creating file:
+```bash
+sudo nano /etc/udev/rules.d/99-mpp-service.rules
+```
+
+And copying this content to it:
+```bash
+KERNEL=="mpp_service", MODE="0660", GROUP="video"
+KERNEL=="rga", MODE="0660", GROUP="video"
+KERNEL=="system", MODE="0666", GROUP="video"
+KERNEL=="system-uncached", MODE="0666", GROUP="video"
+KERNEL=="system-dma32", MODE="0666", GROUP="video"
+KERNEL=="system-uncached-dma32", MODE="0666", GROUP="video"
+```
+
+Reload rules to apply changes:
+```bash
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Verify, must be in order: root, video
+```bash
+ls -l /dev/mpp_service
+```
+
 ## Original README
 
 Original README of the project is located in `readme.txt` file.
