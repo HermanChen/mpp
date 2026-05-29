@@ -297,7 +297,7 @@ RK_S32 mpi_enc_opt_i(void *ctx, const char *next)
         size_t len = strnlen(next, MAX_FILE_NAME_LENGTH);
         if (len) {
             cmd->file_input = mpp_calloc(char, len + 1);
-            strcpy(cmd->file_input, next);
+            memcpy(cmd->file_input, next, len);
             name_to_frame_format(cmd->file_input, &cmd->format);
 
             if (cmd->type_src == MPP_VIDEO_CodingUnused)
@@ -320,7 +320,7 @@ RK_S32 mpi_enc_opt_o(void *ctx, const char *next)
         size_t len = strnlen(next, MAX_FILE_NAME_LENGTH);
         if (len) {
             cmd->file_output = mpp_calloc(char, len + 1);
-            strcpy(cmd->file_output, next);
+            memcpy(cmd->file_output, next, len);
             name_to_coding_type(cmd->file_output, &cmd->type);
         }
 
@@ -732,7 +732,7 @@ RK_S32 mpi_enc_opt_cfg(void *ctx, const char *next)
             }
 
             cmd->file_cfg = mpp_calloc(char, len + 1);
-            strncpy(cmd->file_cfg, next, len);
+            memcpy(cmd->file_cfg, next, len);
 
             if (obj_set->cfg_obj == NULL) {
                 mpp_enc_cfg_init(&cfg_obj);
@@ -770,7 +770,7 @@ RK_S32 mpi_enc_opt_ref_cfg(void *ctx, const char *next)
             cmd->file_ref_cfg = mpp_calloc(char, len + 1);
             if (!cmd->file_ref_cfg)
                 return 0;
-            strncpy(cmd->file_ref_cfg, next, len);
+            memcpy(cmd->file_ref_cfg, next, len);
 
             return 1;
         }
@@ -789,7 +789,7 @@ RK_S32 mpi_enc_opt_slt(void *ctx, const char *next)
         size_t len = strnlen(next, MAX_FILE_NAME_LENGTH);
         if (len) {
             cmd->file_slt = mpp_calloc(char, len + 1);
-            strncpy(cmd->file_slt, next, len);
+            memcpy(cmd->file_slt, next, len);
 
             return 1;
         }
@@ -1734,9 +1734,9 @@ MPP_RET mpi_enc_ctx_init(MpiEncTestData *p, MpiEncTestArgs *cmd, RK_S32 chn)
         char *filename = NULL;
 
         if (cmd->nthreads > 1) {
-            strcpy(temp, cmd->file_output);
+            snprintf(temp, sizeof(temp), "%s", cmd->file_output);
             split_path_file_inplace(temp, &path, &filename);
-            sprintf(output_name, "%s/chn%d_%s", path, chn, filename);
+            snprintf(output_name, sizeof(output_name), "%s/chn%d_%s", path, chn, filename);
             p->fp_output[chn] = fopen(output_name, "w+b");
         } else if (cmd->nthreads == 1) {
             p->fp_output[chn] = fopen(cmd->file_output, "w+b");
